@@ -260,7 +260,7 @@ textarea{resize:vertical;min-height:56px}
         <div class="upload-badge" style="background:var(--gold)">B</div>
         <div id="promptB">
           <div class="upload-icon-lg">⬆</div>
-          <div class="upload-label">Fichier B — Liste financière</div>
+          <div class="upload-label">Fichier B — Liste initiale (requête)</div>
           <div class="upload-hint">Glissez ou cliquez pour choisir</div>
           <label class="btn-upload" style="background:var(--gold)">
             Choisir le fichier
@@ -285,8 +285,35 @@ textarea{resize:vertical;min-height:56px}
   <div id="page2" class="card fade" style="display:none">
     <div class="card-header">
       <h2>Mapping des colonnes</h2>
-      <p>Associez les colonnes Nom, CIN et Téléphone dans chaque fichier</p>
+      <p>Associez les colonnes de chaque fichier</p>
     </div>
+
+    <!-- ── Panneau Localisation ── -->
+    <div style="padding:18px 28px 0">
+      <div class="mapping-block" style="border-top:3px solid var(--purple,#6c3483);margin-bottom:4px">
+        <div class="mapping-title" style="color:var(--purple,#6c3483)">📍 Localisation <small style="font-weight:400;color:var(--ink-muted)">(commune aux deux fichiers — colonnes de référence)</small></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+          <div class="col-selector">
+            <div class="col-label">Région — Fichier A <small>(num. ex: REG-A1)</small></div>
+            <select id="areg"><option value="">— optionnel —</option></select>
+          </div>
+          <div class="col-selector">
+            <div class="col-label">District — Fichier A <small>(1ère col. D, F)</small></div>
+            <select id="adist"><option value="">— optionnel —</option></select>
+          </div>
+          <div class="col-selector">
+            <div class="col-label">Région — Fichier B <small>(num. ex: REG-B1)</small></div>
+            <select id="breg"><option value="">— optionnel —</option></select>
+          </div>
+          <div class="col-selector">
+            <div class="col-label">District — Fichier B <small>(1ère col. C, E, G)</small></div>
+            <select id="bdist"><option value="">— optionnel —</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Réclamants & Liste initiale ── -->
     <div class="mapping-grid">
       <div class="mapping-block" style="border-top:3px solid var(--teal)">
         <div class="mapping-title" style="color:var(--teal)">Fichier A — Réclamants <span class="mapping-count" id="countA">0 lignes</span></div>
@@ -294,21 +321,17 @@ textarea{resize:vertical;min-height:56px}
         <div class="col-selector"><div class="col-label">🔵 Numéro CIN <small>(critère 2a)</small></div><select id="acin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🔵 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="amnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🔵 Téléphone <small>(critère 3)</small></div><select id="atel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">🔵 Région <small>(incluse dans le numéro ex: REGION-A1)</small></div><select id="areg"><option value="">— optionnel —</option></select></div>
-        <div class="col-selector"><div class="col-label">🔵 District <small>(1ère colonne export D et F)</small></div><select id="adist"><option value="">— optionnel —</option></select></div>
         <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
         <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
         <div id="extraA" style="display:flex;flex-direction:column;gap:8px"></div>
         <button type="button" class="btn-ghost" style="font-size:11px;padding:5px 10px;align-self:flex-start" onclick="addExtra('A')">+ Ajouter une variable</button>
       </div>
       <div class="mapping-block" style="border-top:3px solid var(--gold)">
-        <div class="mapping-title" style="color:var(--gold)">Fichier B — Liste financière <span class="mapping-count" id="countB">0 lignes</span></div>
+        <div class="mapping-title" style="color:var(--gold)">Fichier B — Liste initiale (requête) <span class="mapping-count" id="countB">0 lignes</span></div>
         <div class="col-selector"><div class="col-label">🟡 Nom complet <small>(critère 1)</small></div><select id="bnom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 Numéro CIN <small>(critère 2a)</small></div><select id="bcin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="bmnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 Téléphone <small>(critère 3)</small></div><select id="btel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">🟡 Région <small>(incluse dans le numéro ex: REGION-B1)</small></div><select id="breg"><option value="">— optionnel —</option></select></div>
-        <div class="col-selector"><div class="col-label">🟡 District <small>(1ère colonne export C, E et G)</small></div><select id="bdist"><option value="">— optionnel —</option></select></div>
         <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
         <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
         <div id="extraB" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -385,9 +408,9 @@ const TABS = [
   {id:'C', label:'C', desc:'A ∩ B', color:'var(--teal)',
    info:'✓ Personnes présentes dans les deux listes avec correspondance exacte (≥95%) sur au moins un critère.'},
   {id:'D', label:'D', desc:'A \\ B', color:'var(--red)',
-   info:'⚠ Réclamants (A) absents de la liste financière (B) — réclamations à vérifier.'},
+   info:'⚠ Réclamants (A) absents de la liste initiale (requête) (B) — réclamations à vérifier.'},
   {id:'E', label:'E', desc:'B \\ A', color:'var(--green)',
-   info:'⏸ Personnes dans la liste financière (B) sans réclamation — droits potentiels non réclamés.'},
+   info:'⏸ Personnes dans la liste initiale (requête) (B) sans réclamation — droits potentiels non réclamés.'},
   {id:'F', label:'F', desc:'D ↔ E', color:'var(--orange)',
    info:'~ Correspondances floues entre D et E — probablement la même personne (variante orthographique ou de données).'},
   {id:'G', label:'G', desc:'Non trouvés A', color:'var(--purple)',
@@ -970,10 +993,14 @@ async function exportExcel(){
     });
   }
 
-  const allColsA=dataA.length?Object.keys(dataA[0]):[];
-  addSheet('A — Réclamants (complet)',allColsA,dataA.map(r=>allColsA.map(c=>r[c]??'')));
-  const allColsB=dataB.length?Object.keys(dataB[0]):[];
-  addSheet('B — Liste financière (complet)',allColsB,dataB.map(r=>allColsB.map(c=>r[c]??'')));
+  const allColsA=dataA.length?Object.keys(dataA[0]).filter(k=>!k.startsWith('__')):[];
+  addSheet('A — Réclamants (complet)',
+    ['N° A',...allColsA],
+    dataA.map(r=>[regNumA(r),...allColsA.map(c=>r[c]??'')]));
+  const allColsB=dataB.length?Object.keys(dataB[0]).filter(k=>!k.startsWith('__')):[];
+  addSheet('B — Liste initiale (complet)',
+    ['N° B',...allColsB],
+    dataB.map(r=>[regNumB(r),...allColsB.map(c=>r[c]??'')]));
 
   // Region-prefixed number helpers
   const regNumA = (row) => {
@@ -1023,7 +1050,7 @@ async function exportExcel(){
   const wsSummary=wb.addWorksheet('Résumé');
   wsSummary.columns=[{header:'Liste',width:10},{header:'Description',width:50},{header:'Entrées',width:14}];
   wsSummary.getRow(1).eachCell(cell=>{cell.fill=fillS(DARK);cell.font=fontS(WHITE,true);cell.border=brd();});
-  [['A','Fichier source — Réclamants',dataA.length],['B','Fichier source — Liste financière',dataB.length],['C','A ∩ B — Correspondances exactes',results.listC.length],['D','A \\ B — Réclamants absents de B',results.listD.length],['E','B \\ A — Dus sans réclamation',results.listE.length],['F','Correspondances floues D ↔ E',results.listF.length],['G','Non trouvés côté A',results.listG.length],['H','Non trouvés côté B',results.listH.length],['','Généré le',new Date().toLocaleString('fr-FR')],['','Seuil liste F',threshold+'%']].forEach(r=>{const row=wsSummary.addRow(r);row.eachCell(c=>{c.fill=fillS(WHITE);c.font=fontS(DARK,false);c.border=brd();});});
+  [['A','Fichier source — Réclamants',dataA.length],['B','Fichier source — Liste initiale (requête)',dataB.length],['C','A ∩ B — Correspondances exactes',results.listC.length],['D','A \\ B — Réclamants absents de B',results.listD.length],['E','B \\ A — Dus sans réclamation',results.listE.length],['F','Correspondances floues D ↔ E',results.listF.length],['G','Non trouvés côté A',results.listG.length],['H','Non trouvés côté B',results.listH.length],['','Généré le',new Date().toLocaleString('fr-FR')],['','Seuil liste F',threshold+'%']].forEach(r=>{const row=wsSummary.addRow(r);row.eachCell(c=>{c.fill=fillS(WHITE);c.font=fontS(DARK,false);c.border=brd();});});
 
   try{
     const buf=await wb.xlsx.writeBuffer();
