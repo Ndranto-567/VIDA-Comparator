@@ -939,44 +939,68 @@ function exportExcel(){
   const exHdAsingle=(cA.extra||[]).filter(e=>e.col).map(e=>e.label);
   const exHdBsingle=(cB.extra||[]).filter(e=>e.col).map(e=>e.label);
 
+  // Colonnes côte à côte : [A]Nom [B]Nom | [A]CIN [B]CIN | [A]Mnt [B]Mnt | [A]Tél [B]Tél | extras intercalés
+  const extraPairsHd=(cA.extra||[]).filter(e=>e.col).map((e,i)=>{
+    const eb=(cB.extra||[])[i];
+    return eb&&eb.col ? [`[A] ${e.label}`,`[B] ${eb.label}`] : [`[A] ${e.label}`];
+  }).flat();
+  const extraPairsVal=(rowA,rowB)=>(cA.extra||[]).filter(e=>e.col).map((e,i)=>{
+    const eb=(cB.extra||[])[i];
+    return eb&&eb.col ? [rowA[e.col]??'',rowB[eb.col]??''] : [rowA[e.col]??''];
+  }).flat();
+
   addSheet('C — A∩B (correspondances)',
-    [`[A] ${cA.nom}`,`[A] ${cA.cin}`,`[A] Montant`,`[A] ${cA.tel}`,...exHdA,
-     `[B] ${cB.nom}`,`[B] ${cB.cin}`,`[B] Montant`,`[B] ${cB.tel}`,...exHdB,
-     'Score (%)','Critère(s)','Ecart Montant','Explication','Décision du comité'],
+    [`[A] ${cA.nom}`,       `[B] ${cB.nom}`,
+     `[A] ${cA.cin}`,       `[B] ${cB.cin}`,
+     `[A] ${cA.mnt}`,       `[B] ${cB.mnt}`,
+     `[A] ${cA.tel}`,       `[B] ${cB.tel}`,
+     ...extraPairsHd,
+     'Score (%)','Critère(s)',`Ecart [A]${cA.mnt}/[B]${cB.mnt}`,'Explication','Décision du comité'],
     results.listC.map(i=>{
       const mntA=i.sim?.mntA, mntB=i.sim?.mntB;
       const ecart=(mntA!==null&&mntA!==undefined&&mntB!==null&&mntB!==undefined)?(mntA-mntB):'';
-      return [i.rowA[cA.nom]??'',i.rowA[cA.cin]??'',i.rowA[cA.mnt]??'',i.rowA[cA.tel]??'',...exValA(i.rowA),
-              i.rowB[cB.nom]??'',i.rowB[cB.cin]??'',i.rowB[cB.mnt]??'',i.rowB[cB.tel]??'',...exValB(i.rowB),
-              `${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),ecart,i.explication,i.decision];})
+      return [
+        i.rowA[cA.nom]??'',  i.rowB[cB.nom]??'',
+        i.rowA[cA.cin]??'',  i.rowB[cB.cin]??'',
+        i.rowA[cA.mnt]??'',  i.rowB[cB.mnt]??'',
+        i.rowA[cA.tel]??'',  i.rowB[cB.tel]??'',
+        ...extraPairsVal(i.rowA,i.rowB),
+        `${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),ecart,i.explication,i.decision];})
   );
 
   addSheet('D — Réclamants absents de B',
-    ['Nom complet','CIN','Montant','Téléphone',...exHdAsingle,'Explication','Décision du comité'],
+    [cA.nom, cA.cin, cA.mnt, cA.tel, ...exHdAsingle,'Explication','Décision du comité'],
     results.listD.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision])
   );
 
   addSheet('E — Dus sans réclamation',
-    ['Nom complet','CIN','Montant','Téléphone',...exHdBsingle,'Explication','Décision du comité'],
+    [cB.nom, cB.cin, cB.mnt, cB.tel, ...exHdBsingle,'Explication','Décision du comité'],
     results.listE.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision])
   );
 
   addSheet('F — Correspondances floues D↔E',
-    [`[D] ${cA.nom}`,`[D] ${cA.cin}`,`[D] Montant`,`[D] ${cA.tel}`,...exHdA,
-     `[E] ${cB.nom}`,`[E] ${cB.cin}`,`[E] Montant`,`[E] ${cB.tel}`,...exHdB,
+    [`[D] ${cA.nom}`,       `[E] ${cB.nom}`,
+     `[D] ${cA.cin}`,       `[E] ${cB.cin}`,
+     `[D] ${cA.mnt}`,       `[E] ${cB.mnt}`,
+     `[D] ${cA.tel}`,       `[E] ${cB.tel}`,
+     ...extraPairsHd,
      'Score global (%)','Explication','Décision du comité'],
-    results.listF.map(i=>[i.rowD[cA.nom]??'',i.rowD[cA.cin]??'',i.rowD[cA.mnt]??'',i.rowD[cA.tel]??'',...exValA(i.rowD),
-                          i.rowE[cB.nom]??'',i.rowE[cB.cin]??'',i.rowE[cB.mnt]??'',i.rowE[cB.tel]??'',...exValB(i.rowE),
-                          `${i.score}%`,i.explication,i.decision])
+    results.listF.map(i=>[
+      i.rowD[cA.nom]??'', i.rowE[cB.nom]??'',
+      i.rowD[cA.cin]??'', i.rowE[cB.cin]??'',
+      i.rowD[cA.mnt]??'', i.rowE[cB.mnt]??'',
+      i.rowD[cA.tel]??'', i.rowE[cB.tel]??'',
+      ...extraPairsVal(i.rowD,i.rowE),
+      `${i.score}%`,i.explication,i.decision])
   );
 
   addSheet('G — Non trouvés dans A',
-    ['Nom complet','CIN','Montant','Téléphone',...exHdAsingle,'Explication','Décision du comité'],
+    [cA.nom, cA.cin, cA.mnt, cA.tel, ...exHdAsingle,'Explication','Décision du comité'],
     results.listG.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision])
   );
 
   addSheet('H — Non trouvés dans B',
-    ['Nom complet','CIN','Montant','Téléphone',...exHdBsingle,'Explication','Décision du comité'],
+    [cB.nom, cB.cin, cB.mnt, cB.tel, ...exHdBsingle,'Explication','Décision du comité'],
     results.listH.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision])
   );
 
