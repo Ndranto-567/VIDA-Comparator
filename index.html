@@ -683,10 +683,10 @@ async function runAnalysis(){
         if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
       }
       if(bestScore>=EXACT*100&&bestIdxB>=0){
-        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:'',decision:''});
+        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
         matchedBIdx.add(bestIdxB);
       }else{
-        listD.push({row:rA,idxA:ia,explication:'',decision:''});
+        listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
       }
     }
     const pct=5+((end/total)*40);
@@ -697,7 +697,7 @@ async function runAnalysis(){
   setProgress(50,'Construction de la liste E…','');
   await sleep(20);
 
-  const listE=dataB.map((r,i)=>({row:r,idxB:i,explication:'',decision:''})).filter((_,i)=>!matchedBIdx.has(i));
+  const listE=dataB.map((r,i)=>({row:r,idxB:i,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'})).filter((_,i)=>!matchedBIdx.has(i));
 
   setProgress(55,'Recherche des correspondances floues (F)…',`${listD.length} × ${listE.length} comparaisons`);
   await sleep(20);
@@ -712,7 +712,7 @@ async function runAnalysis(){
       for(let ei=0;ei<listE.length;ei++){
         const sim=similarity(listD[dIdx].row,listE[ei].row,cA,cB);
         if(sim.score>=fThreshold*100){
-          listF.push({rowD:listD[dIdx].row,rowE:listE[ei].row,idxD:listD[dIdx].idxA,idxE:listE[ei].idxB,score:sim.score,explication:'',decision:''});
+          listF.push({rowD:listD[dIdx].row,rowE:listE[ei].row,idxD:listD[dIdx].idxA,idxE:listE[ei].idxB,score:sim.score,explication:"Avec une comparaison plus souple, l'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
         }
         doneF++;
       }
