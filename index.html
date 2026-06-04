@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ComparListes — Réclamations & Droits</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --ink:#1a1a2e; --ink-soft:#4a4a6a; --ink-muted:#8888aa;
+  --paper:#f7f6f2; --paper-warm:#eeecdf; --cream:#faf9f5;
+  --gold:#c9a84c; --gold-light:#e8d5a3; --gold-pale:#f5edda;
+  --teal:#2a7d8c; --teal-light:#4aacb8; --teal-pale:#dff0f3;
+  --red:#c0392b; --red-pale:#fdecea;
+  --green:#1e7e5a; --green-pale:#e3f5ec;
+  --orange:#c96a2a; --orange-pale:#fef0e6;
+  --purple:#6c3483; --purple-pale:#f5eef8;
+  --blue:#2962a8; --blue-pale:#e8f0fc;
+  --border:rgba(26,26,46,0.12);
+  --radius:8px; --radius-lg:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.6;min-height:100vh}
+h1,h2,h3{font-family:'DM Serif Display',serif;line-height:1.2}
+button{cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;border:none;outline:none;transition:all .18s ease}
+input,select,textarea{font-family:'DM Sans',sans-serif;font-size:13px;outline:none;border:1.5px solid var(--border);border-radius:var(--radius);padding:8px 12px;background:white;color:var(--ink);transition:border-color .15s ease;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(42,125,140,.10)}
+textarea{resize:vertical;min-height:56px}
+
+/* Layout */
+.app{min-height:100vh;display:flex;flex-direction:column}
+.app-header{background:var(--ink);color:white;padding:0 32px;position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(0,0,0,.25)}
+.header-inner{max-width:1280px;margin:0 auto;height:64px;display:flex;align-items:center;justify-content:space-between}
+.header-brand{display:flex;align-items:center;gap:14px}
+.brand-icon{font-size:26px}
+.brand-title{font-family:'DM Serif Display',serif;font-size:22px;color:white}
+.brand-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:-2px}
+.app-main{flex:1;max-width:1280px;margin:0 auto;padding:28px 24px 48px;width:100%}
+.app-footer{background:var(--ink);color:rgba(255,255,255,.35);padding:14px 32px;display:flex;justify-content:space-between;font-size:12px}
+.app-footer a{color:var(--gold-light);text-decoration:none;font-weight:500}
+
+/* Steps */
+.steps{display:flex;align-items:center;justify-content:center;margin-bottom:28px;flex-wrap:wrap;gap:4px}
+.step{display:flex;align-items:center;gap:8px;opacity:.35;transition:opacity .2s}
+.step.done,.step.active{opacity:1}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--ink-muted);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+.step.active .step-num{background:var(--teal);box-shadow:0 0 0 4px rgba(42,125,140,.15)}
+.step.done .step-num{background:var(--green)}
+.step-name{font-size:12px;font-weight:500;white-space:nowrap}
+.step-line{width:32px;height:1px;background:var(--border);margin:0 4px}
+
+/* Card */
+.card{background:white;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:0 1px 4px rgba(26,26,46,.08);overflow:hidden;margin-bottom:20px}
+.card-header{padding:24px 28px 18px;border-bottom:1px solid var(--border);background:var(--cream)}
+.card-header h2{font-size:20px;margin-bottom:4px}
+.card-header p{color:var(--ink-soft);font-size:13px}
+.card-footer{padding:18px 28px;border-top:1px solid var(--border);background:var(--cream);display:flex;justify-content:flex-end;gap:10px}
+
+/* Upload */
+.upload-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:0;padding:28px;align-items:center}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:28px 20px;text-align:center;transition:all .2s;position:relative;background:var(--paper);cursor:pointer}
+.upload-zone.has-file{border-color:var(--zone-color);border-style:solid;background:white}
+.upload-zone:hover{border-color:var(--zone-color,var(--teal))}
+.upload-badge{position:absolute;top:-13px;left:18px;width:26px;height:26px;border-radius:50%;background:var(--zone-color);color:white;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.upload-icon-lg{font-size:28px;opacity:.25;margin-bottom:8px}
+.upload-label{font-size:14px;font-weight:600;margin-bottom:4px}
+.upload-hint{font-size:11px;color:var(--ink-muted);margin-bottom:12px}
+.btn-upload{display:inline-block;padding:7px 16px;background:var(--zone-color);color:white;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn-upload:hover{opacity:.85}
+.upload-success{display:flex;align-items:center;gap:10px;padding:4px 0;text-align:left}
+.upload-check{width:34px;height:34px;border-radius:50%;background:var(--zone-color);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0}
+.upload-filename{font-size:13px;font-weight:600;word-break:break-all}
+.upload-filesize{font-size:11px;color:var(--ink-muted)}
+.btn-remove{background:transparent;color:var(--ink-muted);padding:3px 6px;border-radius:4px;margin-left:auto;font-size:13px;flex-shrink:0}
+.btn-remove:hover{background:var(--paper-warm)}
+.vs-divider{display:flex;align-items:center;justify-content:center;padding:0 20px}
+.vs-divider span{font-family:'DM Serif Display',serif;font-size:16px;color:var(--ink-muted);background:var(--paper-warm);border:1px solid var(--border);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+
+/* Mapping */
+.mapping-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:28px}
+.mapping-block{background:var(--paper);border-radius:var(--radius);padding:18px 20px;border:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
+.mapping-title{font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.mapping-count{font-size:11px;font-weight:400;color:var(--ink-muted);background:var(--paper-warm);padding:2px 8px;border-radius:10px}
+.col-selector{display:flex;flex-direction:column;gap:4px}
+.col-label{font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px}
+
+/* Settings */
+.settings-block{padding:24px 28px;display:flex;flex-direction:column;gap:20px}
+.setting-row{display:grid;grid-template-columns:1fr 300px;gap:32px;align-items:center}
+.setting-title{font-size:14px;font-weight:600;margin-bottom:5px}
+.setting-desc{font-size:12.5px;color:var(--ink-soft);line-height:1.55}
+.threshold-control{display:flex;flex-direction:column;gap:5px}
+.range-slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:linear-gradient(to right,var(--teal) var(--pct,50%),var(--border) var(--pct,50%));border:none;padding:0;cursor:pointer}
+.range-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px rgba(42,125,140,.2);cursor:pointer}
+.threshold-value{font-size:26px;font-family:'DM Serif Display',serif;color:var(--teal);text-align:center}
+.threshold-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-muted)}
+.logic-box{background:var(--paper);border-radius:var(--radius);padding:18px 20px;border:1px solid var(--border)}
+.logic-title{font-size:11px;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}
+.logic-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.logic-item{background:white;border-radius:var(--radius);padding:10px 12px;display:flex;align-items:flex-start;gap:8px;border-left:3px solid var(--lc)}
+.logic-item-id{font-family:'DM Serif Display',serif;font-size:18px;line-height:1;color:var(--lc);flex-shrink:0}
+.logic-item-title{font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--ink)}
+.logic-item-desc{font-size:10.5px;color:var(--ink-soft);margin-top:2px}
+
+/* Progress */
+.progress-overlay{position:fixed;inset:0;background:rgba(26,26,46,.7);z-index:1000;display:flex;align-items:center;justify-content:center}
+.progress-box{background:white;border-radius:var(--radius-lg);padding:36px 48px;text-align:center;min-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.progress-title{font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:6px;color:var(--ink)}
+.progress-sub{font-size:13px;color:var(--ink-soft);margin-bottom:20px}
+.progress-bar-wrap{background:var(--paper);border-radius:10px;height:10px;overflow:hidden;margin-bottom:10px}
+.progress-bar{height:100%;border-radius:10px;background:linear-gradient(90deg,var(--teal),var(--teal-light));transition:width .3s ease}
+.progress-pct{font-family:'DM Mono',monospace;font-size:13px;color:var(--teal);font-weight:500}
+.progress-step{font-size:12px;color:var(--ink-muted);margin-top:6px;min-height:18px}
+
+/* Results */
+.results-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.results-header h2{font-size:20px}
+.results-header p{font-size:13px;color:var(--ink-soft)}
+.results-actions{display:flex;gap:10px;align-items:center;flex-shrink:0}
+
+.stats-row{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-bottom:16px}
+.stat-card{background:white;border-radius:var(--radius);border:1px solid var(--border);padding:12px 8px;text-align:center;box-shadow:0 1px 4px rgba(26,26,46,.06)}
+.stat-icon{font-size:14px;margin-bottom:2px}
+.stat-value{font-family:'DM Serif Display',serif;font-size:22px;line-height:1;margin-bottom:2px}
+.stat-label{font-size:9.5px;color:var(--ink-muted);font-weight:500;line-height:1.3}
+
+/* Tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tab-btn{background:white;border:1.5px solid var(--border);border-radius:var(--radius);padding:8px 14px;display:flex;align-items:center;gap:7px;color:var(--ink-soft)}
+.tab-btn:hover{border-color:var(--tc);color:var(--ink)}
+.tab-btn.active{border-color:var(--tc);background:white;color:var(--ink);box-shadow:0 1px 4px rgba(26,26,46,.08)}
+.tab-letter{font-family:'DM Serif Display',serif;font-size:17px;color:var(--tc)}
+.tab-count{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,var(--tc) 15%,transparent);color:var(--tc)}
+.tab-desc{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-muted)}
+.tab-info{background:color-mix(in srgb,var(--tc,var(--teal)) 6%,white);border:1px solid color-mix(in srgb,var(--tc,var(--teal)) 20%,transparent);border-radius:var(--radius);padding:10px 14px;font-size:12.5px;color:var(--ink-soft);margin-bottom:12px}
+
+/* Table */
+.table-wrap{background:white;border-radius:var(--radius-lg);border:1px solid var(--border);overflow-x:auto;box-shadow:0 1px 4px rgba(26,26,46,.06)}
+.result-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.result-table th{background:var(--ink);color:rgba(255,255,255,.85);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:9px 11px;text-align:left;white-space:nowrap;position:sticky;top:0}
+.result-table td{padding:7px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+.result-table tbody tr:hover{background:var(--paper)}
+.result-table tbody tr:last-child td{border-bottom:none}
+.td-sep{color:var(--ink-muted);font-weight:700;text-align:center;padding:7px 3px}
+.td-nom{font-weight:500;min-width:110px}
+.td-mono{font-family:'DM Mono',monospace;font-size:11.5px;color:var(--ink-soft);min-width:90px}
+.td-input{width:150px;min-width:130px;font-size:12px;padding:5px 7px;min-height:48px;background:var(--paper)}
+.td-input:focus{background:white}
+.score-badge{display:inline-block;font-family:'DM Mono',monospace;font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.empty-state{background:white;border-radius:var(--radius-lg);border:1px dashed var(--border);padding:40px 28px;text-align:center;color:var(--ink-muted);font-size:14px}
+
+/* Buttons */
+.btn-primary{background:var(--teal);color:white;padding:9px 22px;border-radius:var(--radius);font-weight:600;font-size:13px;box-shadow:0 2px 8px rgba(42,125,140,.25)}
+.btn-primary:hover:not(:disabled){background:var(--teal-light);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--ink-soft);padding:9px 16px;border-radius:var(--radius);border:1.5px solid var(--border);font-size:13px}
+.btn-ghost:hover{background:var(--paper);color:var(--ink)}
+.btn-export{background:var(--ink);color:var(--gold);padding:9px 16px;border-radius:var(--radius);font-weight:600;font-size:12.5px}
+.btn-export:hover{background:var(--gold);color:var(--ink)}
+
+/* Alert */
+.alert-error{background:var(--red-pale);border:1px solid rgba(192,57,43,.2);color:var(--red);padding:11px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:14px}
+
+/* Animations */
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade{animation:fadeIn .3s ease both}
+
+@media(max-width:800px){
+  .upload-grid{grid-template-columns:1fr}.vs-divider{display:none}
+  .mapping-grid{grid-template-columns:1fr}
+  .stats-row{grid-template-columns:repeat(4,1fr)}
+  .logic-grid{grid-template-columns:repeat(2,1fr)}
+  .setting-row{grid-template-columns:1fr}
+  .app-main{padding:16px 12px 36px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <div class="brand-icon">⚖</div>
+      <div>
+        <div class="brand-title">ComparListes</div>
+        <div class="brand-sub">Réclamations &amp; Droits — Outil de comparaison</div>
+      </div>
+    </div>
+    <button class="btn-export" id="btnExport" style="display:none" onclick="exportExcel()">↓ Exporter le rapport Excel</button>
+  </div>
+</header>
+
+<!-- PROGRESS OVERLAY -->
+<div class="progress-overlay" id="progressOverlay" style="display:none">
+  <div class="progress-box">
+    <div class="progress-title">Analyse en cours…</div>
+    <div class="progress-sub" id="progressSub">Initialisation</div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="progress-pct" id="progressPct">0%</div>
+    <div class="progress-step" id="progressStep"></div>
+  </div>
+</div>
+
+<main class="app-main">
+
+  <!-- STEPS -->
+  <div class="steps" id="stepsBar">
+    <div class="step active" id="step-ind-1"><div class="step-num">1</div><div class="step-name">Fichiers</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="step-ind-2"><div class="step-num">2</div><div class="step-name">Colonnes</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="step-ind-3"><div class="step-num">3</div><div class="step-name">Analyse</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="step-ind-4"><div class="step-num">4</div><div class="step-name">Résultats</div></div>
+  </div>
+
+  <div id="alertBox" class="alert-error" style="display:none"></div>
+
+  <!-- ══ STEP 1: UPLOAD ══ -->
+  <div id="page1" class="card fade">
+    <div class="card-header">
+      <h2>Chargement des fichiers</h2>
+      <p>Importez les deux listes Excel à comparer (.xlsx, .xls, .csv)</p>
+    </div>
+    <div class="upload-grid">
+      <!-- File A -->
+      <div class="upload-zone" id="zoneA" style="--zone-color:var(--teal)"
+           ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+           ondragleave="this.style.borderColor=''"
+           ondrop="handleDrop(event,'A')">
+        <div class="upload-badge">A</div>
+        <div id="promptA">
+          <div class="upload-icon-lg">⬆</div>
+          <div class="upload-label">Fichier A — Réclamants</div>
+          <div class="upload-hint">Glissez ou cliquez pour choisir</div>
+          <label class="btn-upload" style="background:var(--teal)">
+            Choisir le fichier
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadFile(this.files[0],'A')">
+          </label>
+        </div>
+        <div id="successA" style="display:none">
+          <div class="upload-success">
+            <div class="upload-check" style="background:var(--teal)">✓</div>
+            <div><div class="upload-filename" id="nameA"></div><div class="upload-filesize" id="sizeA"></div></div>
+            <button class="btn-remove" onclick="removeFile('A')">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="vs-divider"><span>VS</span></div>
+      <!-- File B -->
+      <div class="upload-zone" id="zoneB" style="--zone-color:var(--gold)"
+           ondragover="event.preventDefault();this.style.borderColor='var(--gold)'"
+           ondragleave="this.style.borderColor=''"
+           ondrop="handleDrop(event,'B')">
+        <div class="upload-badge" style="background:var(--gold)">B</div>
+        <div id="promptB">
+          <div class="upload-icon-lg">⬆</div>
+          <div class="upload-label">Fichier B — Liste financière</div>
+          <div class="upload-hint">Glissez ou cliquez pour choisir</div>
+          <label class="btn-upload" style="background:var(--gold)">
+            Choisir le fichier
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadFile(this.files[0],'B')">
+          </label>
+        </div>
+        <div id="successB" style="display:none">
+          <div class="upload-success">
+            <div class="upload-check" style="background:var(--gold)">✓</div>
+            <div><div class="upload-filename" id="nameB"></div><div class="upload-filesize" id="sizeB"></div></div>
+            <button class="btn-remove" onclick="removeFile('B')">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <button class="btn-primary" id="btnStep1" onclick="goStep2()" disabled>Charger et continuer →</button>
+    </div>
+  </div>
+
+  <!-- ══ STEP 2: MAPPING ══ -->
+  <div id="page2" class="card fade" style="display:none">
+    <div class="card-header">
+      <h2>Mapping des colonnes</h2>
+      <p>Associez les colonnes Nom, CIN et Téléphone dans chaque fichier</p>
+    </div>
+    <div class="mapping-grid">
+      <div class="mapping-block" style="border-top:3px solid var(--teal)">
+        <div class="mapping-title" style="color:var(--teal)">Fichier A — Réclamants <span class="mapping-count" id="countA">0 lignes</span></div>
+        <div class="col-selector"><div class="col-label">Nom complet</div><select id="anom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">Numéro CIN</div><select id="acin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">Téléphone</div><select id="atel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+      </div>
+      <div class="mapping-block" style="border-top:3px solid var(--gold)">
+        <div class="mapping-title" style="color:var(--gold)">Fichier B — Liste financière <span class="mapping-count" id="countB">0 lignes</span></div>
+        <div class="col-selector"><div class="col-label">Nom complet</div><select id="bnom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">Numéro CIN</div><select id="bcin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">Téléphone</div><select id="btel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <button class="btn-ghost" onclick="goStep(1)">← Retour</button>
+      <button class="btn-primary" id="btnStep2" onclick="goStep3()" disabled>Configurer l'analyse →</button>
+    </div>
+  </div>
+
+  <!-- ══ STEP 3: SETTINGS ══ -->
+  <div id="page3" class="card fade" style="display:none">
+    <div class="card-header">
+      <h2>Paramètres d'analyse</h2>
+      <p>Configurez le seuil de similarité pour la liste F</p>
+    </div>
+    <div class="settings-block">
+      <div class="setting-row">
+        <div>
+          <div class="setting-title">Seuil de similarité — Liste F (correspondances floues D ↔ E)</div>
+          <div class="setting-desc">Degré minimum de ressemblance pour associer une personne de D à une personne de E. Un seuil bas (50%) est permissif, un seuil haut (99%) est strict.</div>
+        </div>
+        <div class="threshold-control">
+          <input type="range" class="range-slider" min="50" max="99" value="75" id="thresholdSlider" oninput="updateThreshold(this.value)">
+          <div class="threshold-value" id="thresholdVal">75%</div>
+          <div class="threshold-labels"><span>50% (permissif)</span><span>99% (strict)</span></div>
+        </div>
+      </div>
+      <div class="logic-box">
+        <div class="logic-title">Les 8 listes produites</div>
+        <div class="logic-grid" id="logicGrid"></div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <button class="btn-ghost" onclick="goStep(2)">← Retour</button>
+      <button class="btn-primary" onclick="runAnalysis()">⚡ Lancer l'analyse</button>
+    </div>
+  </div>
+
+  <!-- ══ STEP 4: RESULTS ══ -->
+  <div id="page4" style="display:none" class="fade">
+    <div class="results-header">
+      <div><h2>Résultats de l'analyse</h2><p>Saisissez explications et décisions du comité pour chaque liste</p></div>
+      <div class="results-actions">
+        <button class="btn-ghost" onclick="goStep(3)">← Reconfig.</button>
+        <button class="btn-export" onclick="exportExcel()">↓ Exporter Excel</button>
+      </div>
+    </div>
+    <div class="stats-row" id="statsRow"></div>
+    <div class="tabs" id="tabsBar"></div>
+    <div class="tab-info" id="tabInfo"></div>
+    <div id="tableArea"></div>
+  </div>
+
+</main>
+<footer class="app-footer">
+  <span>ComparListes © 2026 — Outil de comparaison de réclamations &amp; droits</span>
+  <a href="https://github.com" target="_blank">GitHub →</a>
+</footer>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════
+let dataA = [], dataB = [], headersA = [], headersB = [];
+let results = null; // {listC,listD,listE,listF,listG,listH}
+let activeTab = 'C';
+let threshold = 75;
+
+const TABS = [
+  {id:'C', label:'C', desc:'A ∩ B', color:'var(--teal)',
+   info:'✓ Personnes présentes dans les deux listes avec correspondance exacte (≥95%) sur au moins un critère.'},
+  {id:'D', label:'D', desc:'A \\ B', color:'var(--red)',
+   info:'⚠ Réclamants (A) absents de la liste financière (B) — réclamations à vérifier.'},
+  {id:'E', label:'E', desc:'B \\ A', color:'var(--green)',
+   info:'⏸ Personnes dans la liste financière (B) sans réclamation — droits potentiels non réclamés.'},
+  {id:'F', label:'F', desc:'D ↔ E', color:'var(--orange)',
+   info:'~ Correspondances floues entre D et E — probablement la même personne (variante orthographique ou de données).'},
+  {id:'G', label:'G', desc:'Non trouvés A', color:'var(--purple)',
+   info:'✗ Personnes de A non retrouvées dans aucune liste (ni C ni F côté A) — cas indéterminés côté réclamants.'},
+  {id:'H', label:'H', desc:'Non trouvés B', color:'var(--blue)',
+   info:'✗ Personnes de B non retrouvées dans aucune liste (ni C ni F côté B) — cas indéterminés côté financiers.'},
+];
+
+const LOGIC_ITEMS = [
+  {id:'C',color:'var(--teal)',title:'C = A ∩ B',desc:'Correspondance exacte dans les deux listes'},
+  {id:'D',color:'var(--red)',title:'D = A \\ B',desc:'Réclamants absents de B'},
+  {id:'E',color:'var(--green)',title:'E = B \\ A',desc:'Dus sans réclamation'},
+  {id:'F',color:'var(--orange)',title:'F ≈ D ↔ E',desc:'Similaires entre D et E'},
+  {id:'G',color:'var(--purple)',title:'G ⊂ A',desc:'Non trouvés dans A'},
+  {id:'H',color:'var(--blue)',title:'H ⊂ B',desc:'Non trouvés dans B'},
+  {id:'A',color:'var(--teal)',title:'Feuille A',desc:'Données complètes fichier A'},
+  {id:'B',color:'var(--gold)',title:'Feuille B',desc:'Données complètes fichier B'},
+];
+
+// ════════════════════════════════════════════════════════
+// UTILS — Jaro-Winkler
+// ════════════════════════════════════════════════════════
+function normalize(s){
+  if(s===null||s===undefined) return '';
+  return String(s).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]/g,'').trim();
+}
+function normPhone(p){
+  if(!p) return '';
+  return String(p).replace(/\D/g,'').slice(-9);
+}
+function jaro(s1,s2){
+  if(s1===s2) return 1;
+  if(!s1.length||!s2.length) return 0;
+  const md=Math.floor(Math.max(s1.length,s2.length)/2)-1;
+  const m1=new Array(s1.length).fill(false);
+  const m2=new Array(s2.length).fill(false);
+  let matches=0,trans=0;
+  for(let i=0;i<s1.length;i++){
+    const st=Math.max(0,i-md), en=Math.min(i+md+1,s2.length);
+    for(let j=st;j<en;j++){
+      if(m2[j]||s1[i]!==s2[j]) continue;
+      m1[i]=m2[j]=true; matches++; break;
+    }
+  }
+  if(!matches) return 0;
+  let k=0;
+  for(let i=0;i<s1.length;i++){
+    if(!m1[i]) continue;
+    while(!m2[k]) k++;
+    if(s1[i]!==s2[k]) trans++;
+    k++;
+  }
+  return (matches/s1.length+matches/s2.length+(matches-trans/2)/matches)/3;
+}
+function jaroWinkler(a,b){
+  const j=jaro(a,b);
+  let p=0;
+  for(let i=0;i<Math.min(4,Math.min(a.length,b.length));i++){if(a[i]===b[i])p++;else break;}
+  return j+p*0.1*(1-j);
+}
+function similarity(rA,rB,cA,cB){
+  const sn=jaroWinkler(normalize(rA[cA.nom]||''),normalize(rB[cB.nom]||''));
+  const sc=jaroWinkler(normalize(rA[cA.cin]||''),normalize(rB[cB.cin]||''));
+  const st=jaroWinkler(normPhone(rA[cA.tel]),normPhone(rB[cB.tel]));
+  const mx=Math.max(sn,sc,st);
+  return {
+    score:Math.round(mx*100),
+    matchedOn:[sn>=.95?'Nom':null,sc>=.95?'CIN':null,st>=.95?'Tél':null].filter(Boolean)
+  };
+}
+
+// ════════════════════════════════════════════════════════
+// PROGRESS
+// ════════════════════════════════════════════════════════
+function setProgress(pct, sub, step){
+  document.getElementById('progressBar').style.width=pct+'%';
+  document.getElementById('progressPct').textContent=Math.round(pct)+'%';
+  if(sub) document.getElementById('progressSub').textContent=sub;
+  if(step!==undefined) document.getElementById('progressStep').textContent=step;
+}
+function showProgress(v){document.getElementById('progressOverlay').style.display=v?'flex':'none';}
+
+// ════════════════════════════════════════════════════════
+// FILE LOADING
+// ════════════════════════════════════════════════════════
+function handleDrop(e,which){
+  e.preventDefault();
+  document.getElementById('zone'+which).style.borderColor='';
+  const f=e.dataTransfer.files[0]; if(f) loadFile(f,which);
+}
+function loadFile(file,which){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
+      if(which==='A'){dataA=json;headersA=Object.keys(json[0]);}
+      else{dataB=json;headersB=Object.keys(json[0]);}
+      document.getElementById('prompt'+which).style.display='none';
+      document.getElementById('success'+which).style.display='block';
+      document.getElementById('name'+which).textContent=file.name;
+      document.getElementById('size'+which).textContent=(file.size/1024).toFixed(1)+' Ko — '+json.length+' lignes';
+      document.getElementById('zone'+which).classList.add('has-file');
+      checkStep1();
+    }catch(err){showAlert('Erreur lecture fichier '+which+': '+err);}
+  };
+  reader.readAsArrayBuffer(file);
+}
+function removeFile(which){
+  if(which==='A'){dataA=[];headersA=[];}else{dataB=[];headersB=[];}
+  document.getElementById('prompt'+which).style.display='block';
+  document.getElementById('success'+which).style.display='none';
+  document.getElementById('zone'+which).classList.remove('has-file');
+  checkStep1();
+}
+function checkStep1(){
+  document.getElementById('btnStep1').disabled=!(dataA.length&&dataB.length);
+}
+
+// ════════════════════════════════════════════════════════
+// STEPS
+// ════════════════════════════════════════════════════════
+function goStep(n){
+  [1,2,3,4].forEach(i=>{
+    document.getElementById('page'+i).style.display= i===n?'block':'none';
+    const ind=document.getElementById('step-ind-'+i);
+    ind.className='step'+(i<n?' done':i===n?' active':'');
+    if(i<n) ind.querySelector('.step-num').textContent='✓';
+    else ind.querySelector('.step-num').textContent=i;
+  });
+}
+function goStep2(){
+  clearAlert();
+  populateSelects('a',headersA); populateSelects('b',headersB);
+  document.getElementById('countA').textContent=dataA.length+' lignes';
+  document.getElementById('countB').textContent=dataB.length+' lignes';
+  goStep(2);
+}
+function populateSelects(prefix,headers){
+  ['nom','cin','tel'].forEach(field=>{
+    const sel=document.getElementById(prefix+field);
+    sel.innerHTML='<option value="">— choisir —</option>';
+    headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
+    // Auto-detect
+    const lh=headers.map(h=>h.toLowerCase());
+    if(field==='nom'){
+      const idx=lh.findIndex(h=>h.includes('nom')||h.includes('name')||h.includes('prénom'));
+      if(idx>=0) sel.value=headers[idx];
+    }else if(field==='cin'){
+      const idx=lh.findIndex(h=>h.includes('cin')||h.includes('carte')||h.includes('identit'));
+      if(idx>=0) sel.value=headers[idx];
+    }else{
+      const idx=lh.findIndex(h=>h.includes('tel')||h.includes('phone')||h.includes('mobile')||h.includes('portable'));
+      if(idx>=0) sel.value=headers[idx];
+    }
+  });
+  checkMapping();
+}
+function checkMapping(){
+  const ok=['anom','acin','atel','bnom','bcin','btel'].every(id=>document.getElementById(id).value);
+  document.getElementById('btnStep2').disabled=!ok;
+}
+function goStep3(){
+  clearAlert();
+  updateThreshold(75);
+  renderLogicGrid();
+  goStep(3);
+}
+function updateThreshold(v){
+  threshold=parseInt(v);
+  document.getElementById('thresholdSlider').value=v;
+  document.getElementById('thresholdVal').textContent=v+'%';
+  document.getElementById('thresholdSlider').style.setProperty('--pct',((v-50)/49*100)+'%');
+  // Update F desc
+  renderLogicGrid();
+}
+function renderLogicGrid(){
+  const g=document.getElementById('logicGrid');
+  g.innerHTML=LOGIC_ITEMS.map(l=>`
+    <div class="logic-item" style="--lc:${l.color}">
+      <div class="logic-item-id">${l.id}</div>
+      <div><div class="logic-item-title">${l.title}</div>
+      <div class="logic-item-desc">${l.id==='F'?`Similaires ≥ ${threshold}%`:l.desc}</div></div>
+    </div>`).join('');
+}
+
+// ════════════════════════════════════════════════════════
+// ANALYSIS (async with progress)
+// ════════════════════════════════════════════════════════
+async function runAnalysis(){
+  clearAlert();
+  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,tel:document.getElementById('atel').value};
+  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,tel:document.getElementById('btel').value};
+
+  showProgress(true);
+  setProgress(0,'Démarrage de l\'analyse…','');
+
+  await sleep(50);
+
+  // Build lists in chunks to keep UI responsive
+  const EXACT=0.95;
+  const fThreshold=threshold/100;
+
+  const matchedBIdx=new Set();
+  const listC=[], listD=[];
+
+  const total=dataA.length;
+  setProgress(5,'Comparaison A avec B…',`0 / ${total} entrées traitées`);
+  await sleep(20);
+
+  // Process A vs B in chunks
+  const CHUNK=50;
+  for(let i=0;i<dataA.length;i+=CHUNK){
+    const end=Math.min(i+CHUNK,dataA.length);
+    for(let ia=i;ia<end;ia++){
+      const rA=dataA[ia];
+      let bestScore=0, bestIdxB=-1, bestSim=null;
+      for(let ib=0;ib<dataB.length;ib++){
+        const sim=similarity(rA,dataB[ib],cA,cB);
+        if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
+      }
+      if(bestScore>=EXACT*100&&bestIdxB>=0){
+        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:'',decision:''});
+        matchedBIdx.add(bestIdxB);
+      }else{
+        listD.push({row:rA,idxA:ia,explication:'',decision:''});
+      }
+    }
+    const pct=5+((end/total)*40);
+    setProgress(pct,'Comparaison A avec B…',`${end} / ${total} entrées traitées`);
+    await sleep(0);
+  }
+
+  setProgress(50,'Construction de la liste E…','');
+  await sleep(20);
+
+  const listE=dataB.map((r,i)=>({row:r,idxB:i,explication:'',decision:''})).filter((_,i)=>!matchedBIdx.has(i));
+
+  setProgress(55,'Recherche des correspondances floues (F)…',`${listD.length} × ${listE.length} comparaisons`);
+  await sleep(20);
+
+  // Build F in chunks
+  const listF=[];
+  const totalF=listD.length*listE.length;
+  let doneF=0;
+  for(let di=0;di<listD.length;di+=CHUNK){
+    const dEnd=Math.min(di+CHUNK,listD.length);
+    for(let dIdx=di;dIdx<dEnd;dIdx++){
+      for(let ei=0;ei<listE.length;ei++){
+        const sim=similarity(listD[dIdx].row,listE[ei].row,cA,cB);
+        if(sim.score>=fThreshold*100){
+          listF.push({rowD:listD[dIdx].row,rowE:listE[ei].row,idxD:listD[dIdx].idxA,idxE:listE[ei].idxB,score:sim.score,explication:'',decision:''});
+        }
+        doneF++;
+      }
+    }
+    const pct=55+(doneF/Math.max(totalF,1))*25;
+    setProgress(pct,'Recherche des correspondances floues (F)…',`${doneF} / ${totalF} paires analysées`);
+    await sleep(0);
+  }
+  listF.sort((a,b)=>b.score-a.score);
+
+  setProgress(82,'Construction des listes G et H…','');
+  await sleep(20);
+
+  // G: A not in C and not in F (as rowD)
+  const inFasD=new Set(listF.map(f=>f.idxD));
+  const inCasA=new Set(listC.map(c=>c.idxA));
+  const listG=dataA.map((r,i)=>({row:r,idxA:i,explication:'',decision:''}))
+    .filter(item=>!inCasA.has(item.idxA)&&!inFasD.has(item.idxA));
+
+  // H: B not in C and not in F (as rowE)
+  const inFasE=new Set(listF.map(f=>f.idxE));
+  const inCasB=new Set(listC.map(c=>c.idxB));
+  const listH=dataB.map((r,i)=>({row:r,idxB:i,explication:'',decision:''}))
+    .filter(item=>!inCasB.has(item.idxB)&&!inFasE.has(item.idxB));
+
+  setProgress(95,'Finalisation…','');
+  await sleep(100);
+
+  results={listC,listD,listE,listF,listG,listH,colsA:cA,colsB:cB};
+
+  setProgress(100,'Analyse terminée !','');
+  await sleep(400);
+  showProgress(false);
+
+  renderResults();
+  goStep(4);
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+// ════════════════════════════════════════════════════════
+// RENDER RESULTS
+// ════════════════════════════════════════════════════════
+function renderResults(){
+  document.getElementById('btnExport').style.display='block';
+
+  // Stats
+  const stats=[
+    {label:'Fichier A',value:dataA.length,color:'var(--teal)',icon:'📋'},
+    {label:'Fichier B',value:dataB.length,color:'var(--gold)',icon:'📋'},
+    {label:'Liste C (A∩B)',value:results.listC.length,color:'var(--teal)',icon:'✓'},
+    {label:'Liste D (A\\B)',value:results.listD.length,color:'var(--red)',icon:'⚠'},
+    {label:'Liste E (B\\A)',value:results.listE.length,color:'var(--green)',icon:'⏸'},
+    {label:'Liste F (≈)',value:results.listF.length,color:'var(--orange)',icon:'~'},
+    {label:'Liste G (∉A)',value:results.listG.length,color:'var(--purple)',icon:'✗'},
+    {label:'Liste H (∉B)',value:results.listH.length,color:'var(--blue)',icon:'✗'},
+  ];
+  document.getElementById('statsRow').innerHTML=stats.map(s=>`
+    <div class="stat-card">
+      <div class="stat-icon" style="color:${s.color}">${s.icon}</div>
+      <div class="stat-value" style="color:${s.color}">${s.value}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
+
+  // Tabs
+  document.getElementById('tabsBar').innerHTML=TABS.map(t=>`
+    <button class="tab-btn ${activeTab===t.id?'active':''}" style="--tc:${t.color}" onclick="switchTab('${t.id}')">
+      <span class="tab-letter">${t.label}</span>
+      <span class="tab-count">${results['list'+t.id].length}</span>
+      <span class="tab-desc">${t.desc}</span>
+    </button>`).join('');
+
+  renderTab(activeTab);
+}
+function switchTab(id){
+  activeTab=id;
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{b.classList.toggle('active',TABS[i].id===id);});
+  renderTab(id);
+}
+function renderTab(id){
+  const tab=TABS.find(t=>t.id===id);
+  document.getElementById('tabInfo').style.setProperty('--tc',tab.color);
+  document.getElementById('tabInfo').textContent=tab.info;
+  const list=results['list'+id];
+  if(!list||!list.length){
+    document.getElementById('tableArea').innerHTML='<div class="empty-state">Aucune entrée dans cette liste.</div>';
+    return;
+  }
+  const cA=results.colsA, cB=results.colsB;
+  let thead='', rows='';
+
+  if(id==='C'){
+    thead=`<tr>
+      <th>[A] Nom</th><th>[A] CIN</th><th>[A] Tél</th><th></th>
+      <th>[B] Nom</th><th>[B] CIN</th><th>[B] Tél</th>
+      <th>Score</th><th>Critère(s)</th><th>Explication</th><th>Décision du comité</th></tr>`;
+    rows=list.map((item,i)=>`<tr>
+      <td class="td-nom">${esc(item.rowA[cA.nom])}</td>
+      <td class="td-mono">${esc(item.rowA[cA.cin])}</td>
+      <td class="td-mono">${esc(item.rowA[cA.tel])}</td>
+      <td class="td-sep">↔</td>
+      <td class="td-nom">${esc(item.rowB[cB.nom])}</td>
+      <td class="td-mono">${esc(item.rowB[cB.cin])}</td>
+      <td class="td-mono">${esc(item.rowB[cB.tel])}</td>
+      <td>${scoreBadge(item.sim?.score)}</td>
+      <td><small>${(item.sim?.matchedOn||[]).join(', ')}</small></td>
+      <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
+      <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
+    </tr>`).join('');
+  }else if(id==='F'){
+    thead=`<tr>
+      <th>[D] Nom</th><th>[D] CIN</th><th>[D] Tél</th><th></th>
+      <th>[E] Nom</th><th>[E] CIN</th><th>[E] Tél</th>
+      <th>Score</th><th>Explication</th><th>Décision du comité</th></tr>`;
+    rows=list.map((item,i)=>`<tr>
+      <td class="td-nom">${esc(item.rowD[cA.nom])}</td>
+      <td class="td-mono">${esc(item.rowD[cA.cin])}</td>
+      <td class="td-mono">${esc(item.rowD[cA.tel])}</td>
+      <td class="td-sep">↔</td>
+      <td class="td-nom">${esc(item.rowE[cB.nom])}</td>
+      <td class="td-mono">${esc(item.rowE[cB.cin])}</td>
+      <td class="td-mono">${esc(item.rowE[cB.tel])}</td>
+      <td>${scoreBadge(item.score)}</td>
+      <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
+      <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
+    </tr>`).join('');
+  }else{
+    // D, E, G, H — single row
+    const cols=(['D','G'].includes(id))?cA:cB;
+    const rowKey=(['D','G'].includes(id))?'row':'row';
+    thead=`<tr><th>Nom complet</th><th>CIN</th><th>Téléphone</th><th>Explication</th><th>Décision du comité</th></tr>`;
+    rows=list.map((item,i)=>`<tr>
+      <td class="td-nom">${esc(item.row[cols.nom])}</td>
+      <td class="td-mono">${esc(item.row[cols.cin])}</td>
+      <td class="td-mono">${esc(item.row[cols.tel])}</td>
+      <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
+      <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
+    </tr>`).join('');
+  }
+
+  document.getElementById('tableArea').innerHTML=`
+    <div class="table-wrap"><table class="result-table">
+      <thead>${thead}</thead><tbody>${rows}</tbody>
+    </table></div>`;
+}
+function updateItem(listId,idx,field,value){
+  results['list'+listId][idx][field]=value;
+}
+function scoreBadge(s){
+  if(s===undefined||s===null) return '';
+  const c=s>=95?'#1e7e5a':s>=75?'#c96a2a':'#c0392b';
+  return `<span class="score-badge" style="background:${c}18;color:${c}">${s}%</span>`;
+}
+function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ════════════════════════════════════════════════════════
+// EXPORT
+// ════════════════════════════════════════════════════════
+function exportExcel(){
+  if(!results) return;
+  const wb=XLSX.utils.book_new();
+  const cA=results.colsA, cB=results.colsB;
+
+  // Helper: add sheet from array of arrays
+  function addSheet(name,headers,rows){
+    const data=[headers,...rows];
+    const ws=XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=headers.map(()=>({wch:24}));
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  }
+
+  // Feuille A — données complètes
+  const allColsA=dataA.length?Object.keys(dataA[0]):[];
+  addSheet('A — Réclamants (complet)',allColsA,dataA.map(r=>allColsA.map(c=>r[c]??'')));
+
+  // Feuille B — données complètes
+  const allColsB=dataB.length?Object.keys(dataB[0]):[];
+  addSheet('B — Liste financière (complet)',allColsB,dataB.map(r=>allColsB.map(c=>r[c]??'')));
+
+  // Feuille C
+  addSheet('C — A∩B (correspondances)',
+    [`[A] ${cA.nom}`,`[A] ${cA.cin}`,`[A] ${cA.tel}`,`[B] ${cB.nom}`,`[B] ${cB.cin}`,`[B] ${cB.tel}`,'Score (%)','Critère(s)','Explication','Décision du comité'],
+    results.listC.map(i=>[i.rowA[cA.nom]??'',i.rowA[cA.cin]??'',i.rowA[cA.tel]??'',i.rowB[cB.nom]??'',i.rowB[cB.cin]??'',i.rowB[cB.tel]??'',`${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),i.explication,i.decision])
+  );
+
+  // Feuille D
+  addSheet('D — Réclamants absents de B',
+    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
+    results.listD.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.tel]??'',i.explication,i.decision])
+  );
+
+  // Feuille E
+  addSheet('E — Dus sans réclamation',
+    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
+    results.listE.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.tel]??'',i.explication,i.decision])
+  );
+
+  // Feuille F
+  addSheet('F — Correspondances floues D↔E',
+    [`[D] ${cA.nom}`,`[D] ${cA.cin}`,`[D] ${cA.tel}`,`[E] ${cB.nom}`,`[E] ${cB.cin}`,`[E] ${cB.tel}`,'Score global (%)','Explication','Décision du comité'],
+    results.listF.map(i=>[i.rowD[cA.nom]??'',i.rowD[cA.cin]??'',i.rowD[cA.tel]??'',i.rowE[cB.nom]??'',i.rowE[cB.cin]??'',i.rowE[cB.tel]??'',`${i.score}%`,i.explication,i.decision])
+  );
+
+  // Feuille G
+  addSheet('G — Non trouvés dans A',
+    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
+    results.listG.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.tel]??'',i.explication,i.decision])
+  );
+
+  // Feuille H
+  addSheet('H — Non trouvés dans B',
+    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
+    results.listH.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.tel]??'',i.explication,i.decision])
+  );
+
+  // Résumé
+  const today=new Date().toLocaleString('fr-FR');
+  addSheet('Résumé',
+    ['Liste','Description','Entrées'],
+    [
+      ['A','Fichier source — Réclamants',dataA.length],
+      ['B','Fichier source — Liste financière',dataB.length],
+      ['C','A ∩ B — Correspondances exactes',results.listC.length],
+      ['D','A \\ B — Réclamants absents de B',results.listD.length],
+      ['E','B \\ A — Dus sans réclamation',results.listE.length],
+      ['F','Correspondances floues D ↔ E',results.listF.length],
+      ['G','Non trouvés côté A (après tous processus)',results.listG.length],
+      ['H','Non trouvés côté B (après tous processus)',results.listH.length],
+      ['','Généré le',today],
+      ['','Seuil liste F',threshold+'%'],
+    ]
+  );
+
+  const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const blob=new Blob([buf],{type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`rapport_comparaison_${new Date().toISOString().slice(0,10)}.xlsx`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════
+// ALERTS
+// ════════════════════════════════════════════════════════
+function showAlert(msg){const b=document.getElementById('alertBox');b.textContent='⚠ '+msg;b.style.display='block';}
+function clearAlert(){document.getElementById('alertBox').style.display='none';}
+</script>
+</body>
+</html>
