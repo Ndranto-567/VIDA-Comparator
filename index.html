@@ -290,15 +290,25 @@ textarea{resize:vertical;min-height:56px}
     <div class="mapping-grid">
       <div class="mapping-block" style="border-top:3px solid var(--teal)">
         <div class="mapping-title" style="color:var(--teal)">Fichier A — Réclamants <span class="mapping-count" id="countA">0 lignes</span></div>
-        <div class="col-selector"><div class="col-label">Nom complet</div><select id="anom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">Numéro CIN</div><select id="acin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">Téléphone</div><select id="atel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🔵 Nom complet <small>(critère 1)</small></div><select id="anom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🔵 Numéro CIN <small>(critère 2a)</small></div><select id="acin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🔵 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="amnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🔵 Téléphone <small>(critère 3)</small></div><select id="atel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
+        <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
+        <div id="extraA" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button type="button" class="btn-ghost" style="font-size:11px;padding:5px 10px;align-self:flex-start" onclick="addExtra('A')">+ Ajouter une variable</button>
       </div>
       <div class="mapping-block" style="border-top:3px solid var(--gold)">
         <div class="mapping-title" style="color:var(--gold)">Fichier B — Liste financière <span class="mapping-count" id="countB">0 lignes</span></div>
-        <div class="col-selector"><div class="col-label">Nom complet</div><select id="bnom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">Numéro CIN</div><select id="bcin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
-        <div class="col-selector"><div class="col-label">Téléphone</div><select id="btel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🟡 Nom complet <small>(critère 1)</small></div><select id="bnom" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🟡 Numéro CIN <small>(critère 2a)</small></div><select id="bcin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🟡 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="bmnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🟡 Téléphone <small>(critère 3)</small></div><select id="btel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
+        <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
+        <div id="extraB" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button type="button" class="btn-ghost" style="font-size:11px;padding:5px 10px;align-self:flex-start" onclick="addExtra('B')">+ Ajouter une variable</button>
       </div>
     </div>
     <div class="card-footer">
@@ -436,18 +446,40 @@ function jaroWinkler(a,b){
   for(let i=0;i<Math.min(4,Math.min(a.length,b.length));i++){if(a[i]===b[i])p++;else break;}
   return j+p*0.1*(1-j);
 }
+function parseMnt(v){
+  if(v===null||v===undefined||v==='') return null;
+  const n=parseFloat(String(v).replace(/[^0-9.,\-]/g,'').replace(',','.'));
+  return isNaN(n)?null:n;
+}
+function mntMatch(a,b){
+  // Returns 1 if within ±5%, 0 if not, null if either is empty
+  if(a===null||b===null) return null;
+  if(a===0&&b===0) return null; // both zero treated as empty
+  const avg=(Math.abs(a)+Math.abs(b))/2;
+  if(avg===0) return null;
+  return Math.abs(a-b)/avg<=0.05 ? 1 : 0;
+}
 function similarity(rA,rB,cA,cB){
   const nomA=normalize(rA[cA.nom]||''), nomB=normalize(rB[cB.nom]||'');
   const cinA=normalize(rA[cA.cin]||''), cinB=normalize(rB[cB.cin]||'');
   const telA=normPhone(rA[cA.tel]),     telB=normPhone(rB[cB.tel]);
-  // Vide != Vide : si l'un des deux cotes est vide, score = 0 pour ce critere
-  const sn = (nomA && nomB) ? jaroWinkler(nomA, nomB) : 0;
-  const sc = (cinA && cinB) ? jaroWinkler(cinA, cinB) : 0;
-  const st = (telA && telB) ? jaroWinkler(telA, telB) : 0;
-  const mx=Math.max(sn,sc,st);
+  const mntA=parseMnt(rA[cA.mnt]),     mntB=parseMnt(rB[cB.mnt]);
+  // Vide != Vide
+  const sn  = (nomA && nomB) ? jaroWinkler(nomA, nomB) : 0;
+  const scin= (cinA && cinB) ? jaroWinkler(cinA, cinB) : 0;
+  const smnt= mntMatch(mntA,mntB); // 1, 0, or null
+  // Critère 2 = CIN × Montant : les deux doivent matcher (CIN exact + montant ±5%)
+  const sc  = (scin>=0.95 && smnt===1) ? 1 : (scin>=0.95 && smnt===null) ? scin : (smnt===null && scin<0.95) ? scin : 0;
+  const st  = (telA && telB) ? jaroWinkler(telA, telB) : 0;
+  const mx  = Math.max(sn, sc, st);
+  const matched=[];
+  if(sn>=0.95) matched.push('Nom');
+  if(sc>=0.95) matched.push(smnt===1?'CIN+Montant':'CIN');
+  if(st>=0.95) matched.push('Tél');
   return {
     score:Math.round(mx*100),
-    matchedOn:[sn>=.95?'Nom':null,sc>=.95?'CIN':null,st>=.95?'Tél':null].filter(Boolean)
+    matchedOn:matched,
+    mntA, mntB, smnt
   };
 }
 
@@ -521,12 +553,14 @@ function goStep2(){
   document.getElementById('countB').textContent=dataB.length+' lignes';
   goStep(2);
 }
+// Extra vars state: {A:[{label,col},...], B:[...]}
+let extraVars={A:[],B:[]};
+
 function populateSelects(prefix,headers){
-  ['nom','cin','tel'].forEach(field=>{
+  ['nom','cin','mnt','tel'].forEach(field=>{
     const sel=document.getElementById(prefix+field);
     sel.innerHTML='<option value="">— choisir —</option>';
     headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
-    // Auto-detect
     const lh=headers.map(h=>h.toLowerCase());
     if(field==='nom'){
       const idx=lh.findIndex(h=>h.includes('nom')||h.includes('name')||h.includes('prénom'));
@@ -534,15 +568,59 @@ function populateSelects(prefix,headers){
     }else if(field==='cin'){
       const idx=lh.findIndex(h=>h.includes('cin')||h.includes('carte')||h.includes('identit'));
       if(idx>=0) sel.value=headers[idx];
+    }else if(field==='mnt'){
+      const idx=lh.findIndex(h=>h.includes('mont')||h.includes('amount')||h.includes('somme')||h.includes('salaire')||h.includes('droit'));
+      if(idx>=0) sel.value=headers[idx];
     }else{
       const idx=lh.findIndex(h=>h.includes('tel')||h.includes('phone')||h.includes('mobile')||h.includes('portable'));
       if(idx>=0) sel.value=headers[idx];
     }
   });
+  // Reset extra vars UI
+  extraVars[prefix.toUpperCase()]=[];
+  document.getElementById('extra'+prefix.toUpperCase()).innerHTML='';
   checkMapping();
 }
+
+function addExtra(which){
+  const headers=which==='A'?headersA:headersB;
+  if(extraVars[which].length>=4){alert('Maximum 4 variables supplémentaires.');return;}
+  const idx=extraVars[which].length;
+  extraVars[which].push({label:'Variable '+(idx+1),col:''});
+  renderExtraRow(which,idx,headers);
+}
+
+function renderExtraRow(which,idx,headers){
+  const container=document.getElementById('extra'+which);
+  // Remove old row if exists
+  const old=document.getElementById('extra'+which+'_'+idx);
+  if(old) old.remove();
+  const row=document.createElement('div');
+  row.id='extra'+which+'_'+idx;
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center';
+  const inp=document.createElement('input');
+  inp.type='text'; inp.placeholder='Nom du champ…';
+  inp.value=extraVars[which][idx].label;
+  inp.style.cssText='font-size:11px;padding:5px 8px';
+  inp.oninput=e=>{extraVars[which][idx].label=e.target.value;};
+  const sel=document.createElement('select');
+  sel.style.cssText='font-size:11px;padding:5px 8px';
+  sel.innerHTML='<option value="">— colonne —</option>';
+  headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
+  if(extraVars[which][idx].col) sel.value=extraVars[which][idx].col;
+  sel.onchange=e=>{extraVars[which][idx].col=e.target.value;};
+  const btn=document.createElement('button');
+  btn.type='button'; btn.textContent='✕';
+  btn.style.cssText='background:transparent;color:var(--ink-muted);border:none;cursor:pointer;font-size:14px;padding:2px 5px';
+  btn.onclick=()=>{extraVars[which].splice(idx,1);document.getElementById('extra'+which+'_'+idx).remove();
+    // Re-render remaining
+    extraVars[which].forEach((_,i)=>{if(i>=idx){const r=document.getElementById('extra'+which+'_'+(i+1));if(r)r.id='extra'+which+'_'+i;}});
+  };
+  row.appendChild(inp); row.appendChild(sel); row.appendChild(btn);
+  container.appendChild(row);
+}
 function checkMapping(){
-  const ok=['anom','acin','atel','bnom','bcin','btel'].every(id=>document.getElementById(id).value);
+  const ok=['anom','acin','amnt','atel','bnom','bcin','bmnt','btel'].every(id=>document.getElementById(id).value);
   document.getElementById('btnStep2').disabled=!ok;
 }
 function goStep3(){
@@ -574,8 +652,8 @@ function renderLogicGrid(){
 // ════════════════════════════════════════════════════════
 async function runAnalysis(){
   clearAlert();
-  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,tel:document.getElementById('atel').value};
-  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,tel:document.getElementById('btel').value};
+  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,extra:extraVars.A};
+  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,extra:extraVars.B};
 
   showProgress(true);
   setProgress(0,'Démarrage de l\'analyse…','');
@@ -726,52 +804,73 @@ function renderTab(id){
   let thead='', rows='';
 
   if(id==='C'){
+    const extraHeadA=(cA.extra||[]).filter(e=>e.col).map(e=>`<th>[A] ${esc(e.label)}</th>`).join('');
+    const extraHeadB=(cB.extra||[]).filter(e=>e.col).map(e=>`<th>[B] ${esc(e.label)}</th>`).join('');
     thead=`<tr>
-      <th>[A] Nom</th><th>[A] CIN</th><th>[A] Tél</th><th></th>
-      <th>[B] Nom</th><th>[B] CIN</th><th>[B] Tél</th>
-      <th>Score</th><th>Critère(s)</th><th>Explication</th><th>Décision du comité</th></tr>`;
-    rows=list.map((item,i)=>`<tr>
+      <th>[A] Nom</th><th>[A] CIN</th><th>[A] Montant</th><th>[A] Tél</th>${extraHeadA}<th></th>
+      <th>[B] Nom</th><th>[B] CIN</th><th>[B] Montant</th><th>[B] Tél</th>${extraHeadB}
+      <th>Score</th><th>Critère(s)</th><th>Ecart Montant</th><th>Explication</th><th>Décision du comité</th></tr>`;
+    rows=list.map((item,i)=>{
+      const extraA=(cA.extra||[]).filter(e=>e.col).map(e=>`<td class="td-mono">${esc(item.rowA[e.col])}</td>`).join('');
+      const extraB=(cB.extra||[]).filter(e=>e.col).map(e=>`<td class="td-mono">${esc(item.rowB[e.col])}</td>`).join('');
+      const mntA=item.sim?.mntA, mntB=item.sim?.mntB;
+      const ecart=(mntA!==null&&mntA!==undefined&&mntB!==null&&mntB!==undefined)?`${(mntA-mntB).toLocaleString('fr-FR')}`:'—';
+      return `<tr>
       <td class="td-nom">${esc(item.rowA[cA.nom])}</td>
       <td class="td-mono">${esc(item.rowA[cA.cin])}</td>
-      <td class="td-mono">${esc(item.rowA[cA.tel])}</td>
+      <td class="td-mono">${esc(item.rowA[cA.mnt])}</td>
+      <td class="td-mono">${esc(item.rowA[cA.tel])}</td>${extraA}
       <td class="td-sep">↔</td>
       <td class="td-nom">${esc(item.rowB[cB.nom])}</td>
       <td class="td-mono">${esc(item.rowB[cB.cin])}</td>
-      <td class="td-mono">${esc(item.rowB[cB.tel])}</td>
+      <td class="td-mono">${esc(item.rowB[cB.mnt])}</td>
+      <td class="td-mono">${esc(item.rowB[cB.tel])}</td>${extraB}
       <td>${scoreBadge(item.sim?.score)}</td>
       <td><small>${(item.sim?.matchedOn||[]).join(', ')}</small></td>
+      <td class="td-mono" style="color:${item.sim?.smnt===1?'var(--green)':item.sim?.smnt===0?'var(--red)':'var(--ink-muted)'}">${ecart}</td>
       <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
       <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
   }else if(id==='F'){
+    const extraHeadD=(cA.extra||[]).filter(e=>e.col).map(e=>`<th>[D] ${esc(e.label)}</th>`).join('');
+    const extraHeadE=(cB.extra||[]).filter(e=>e.col).map(e=>`<th>[E] ${esc(e.label)}</th>`).join('');
     thead=`<tr>
-      <th>[D] Nom</th><th>[D] CIN</th><th>[D] Tél</th><th></th>
-      <th>[E] Nom</th><th>[E] CIN</th><th>[E] Tél</th>
+      <th>[D] Nom</th><th>[D] CIN</th><th>[D] Montant</th><th>[D] Tél</th>${extraHeadD}<th></th>
+      <th>[E] Nom</th><th>[E] CIN</th><th>[E] Montant</th><th>[E] Tél</th>${extraHeadE}
       <th>Score</th><th>Explication</th><th>Décision du comité</th></tr>`;
-    rows=list.map((item,i)=>`<tr>
+    rows=list.map((item,i)=>{
+      const extraD=(cA.extra||[]).filter(e=>e.col).map(e=>`<td class="td-mono">${esc(item.rowD[e.col])}</td>`).join('');
+      const extraE=(cB.extra||[]).filter(e=>e.col).map(e=>`<td class="td-mono">${esc(item.rowE[e.col])}</td>`).join('');
+      return `<tr>
       <td class="td-nom">${esc(item.rowD[cA.nom])}</td>
       <td class="td-mono">${esc(item.rowD[cA.cin])}</td>
-      <td class="td-mono">${esc(item.rowD[cA.tel])}</td>
+      <td class="td-mono">${esc(item.rowD[cA.mnt])}</td>
+      <td class="td-mono">${esc(item.rowD[cA.tel])}</td>${extraD}
       <td class="td-sep">↔</td>
       <td class="td-nom">${esc(item.rowE[cB.nom])}</td>
       <td class="td-mono">${esc(item.rowE[cB.cin])}</td>
-      <td class="td-mono">${esc(item.rowE[cB.tel])}</td>
+      <td class="td-mono">${esc(item.rowE[cB.mnt])}</td>
+      <td class="td-mono">${esc(item.rowE[cB.tel])}</td>${extraE}
       <td>${scoreBadge(item.score)}</td>
       <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
       <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
   }else{
     // D, E, G, H — single row
     const cols=(['D','G'].includes(id))?cA:cB;
-    const rowKey=(['D','G'].includes(id))?'row':'row';
-    thead=`<tr><th>Nom complet</th><th>CIN</th><th>Téléphone</th><th>Explication</th><th>Décision du comité</th></tr>`;
-    rows=list.map((item,i)=>`<tr>
+    const extraCols=(cols.extra||[]).filter(e=>e.col);
+    const extraH=extraCols.map(e=>`<th>${esc(e.label)}</th>`).join('');
+    thead=`<tr><th>Nom complet</th><th>CIN</th><th>Montant</th><th>Téléphone</th>${extraH}<th>Explication</th><th>Décision du comité</th></tr>`;
+    rows=list.map((item,i)=>{
+      const extraTd=extraCols.map(e=>`<td class="td-mono">${esc(item.row[e.col])}</td>`).join('');
+      return `<tr>
       <td class="td-nom">${esc(item.row[cols.nom])}</td>
       <td class="td-mono">${esc(item.row[cols.cin])}</td>
-      <td class="td-mono">${esc(item.row[cols.tel])}</td>
+      <td class="td-mono">${esc(item.row[cols.mnt])}</td>
+      <td class="td-mono">${esc(item.row[cols.tel])}</td>${extraTd}
       <td><textarea class="td-input" placeholder="Explication…" onchange="updateItem('${id}',${i},'explication',this.value)">${item.explication}</textarea></td>
       <td><textarea class="td-input" placeholder="Décision…" onchange="updateItem('${id}',${i},'decision',this.value)">${item.decision}</textarea></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
   }
 
   document.getElementById('tableArea').innerHTML=`
@@ -814,39 +913,53 @@ function exportExcel(){
   addSheet('B — Liste financière (complet)',allColsB,dataB.map(r=>allColsB.map(c=>r[c]??'')));
 
   // Feuille C
+  // Helper: extra columns headers & values
+  const exHdA=(cA.extra||[]).filter(e=>e.col).map(e=>`[A] ${e.label}`);
+  const exHdB=(cB.extra||[]).filter(e=>e.col).map(e=>`[B] ${e.label}`);
+  const exValA=(row)=>(cA.extra||[]).filter(e=>e.col).map(e=>row[e.col]??'');
+  const exValB=(row)=>(cB.extra||[]).filter(e=>e.col).map(e=>row[e.col]??'');
+  const exHdAsingle=(cA.extra||[]).filter(e=>e.col).map(e=>e.label);
+  const exHdBsingle=(cB.extra||[]).filter(e=>e.col).map(e=>e.label);
+
   addSheet('C — A∩B (correspondances)',
-    [`[A] ${cA.nom}`,`[A] ${cA.cin}`,`[A] ${cA.tel}`,`[B] ${cB.nom}`,`[B] ${cB.cin}`,`[B] ${cB.tel}`,'Score (%)','Critère(s)','Explication','Décision du comité'],
-    results.listC.map(i=>[i.rowA[cA.nom]??'',i.rowA[cA.cin]??'',i.rowA[cA.tel]??'',i.rowB[cB.nom]??'',i.rowB[cB.cin]??'',i.rowB[cB.tel]??'',`${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),i.explication,i.decision])
+    [`[A] ${cA.nom}`,`[A] ${cA.cin}`,`[A] Montant`,`[A] ${cA.tel}`,...exHdA,
+     `[B] ${cB.nom}`,`[B] ${cB.cin}`,`[B] Montant`,`[B] ${cB.tel}`,...exHdB,
+     'Score (%)','Critère(s)','Ecart Montant','Explication','Décision du comité'],
+    results.listC.map(i=>{
+      const mntA=i.sim?.mntA, mntB=i.sim?.mntB;
+      const ecart=(mntA!==null&&mntA!==undefined&&mntB!==null&&mntB!==undefined)?(mntA-mntB):'';
+      return [i.rowA[cA.nom]??'',i.rowA[cA.cin]??'',i.rowA[cA.mnt]??'',i.rowA[cA.tel]??'',...exValA(i.rowA),
+              i.rowB[cB.nom]??'',i.rowB[cB.cin]??'',i.rowB[cB.mnt]??'',i.rowB[cB.tel]??'',...exValB(i.rowB),
+              `${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),ecart,i.explication,i.decision];})
   );
 
-  // Feuille D
   addSheet('D — Réclamants absents de B',
-    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
-    results.listD.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.tel]??'',i.explication,i.decision])
+    ['Nom complet','CIN','Montant','Téléphone',...exHdAsingle,'Explication','Décision du comité'],
+    results.listD.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision])
   );
 
-  // Feuille E
   addSheet('E — Dus sans réclamation',
-    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
-    results.listE.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.tel]??'',i.explication,i.decision])
+    ['Nom complet','CIN','Montant','Téléphone',...exHdBsingle,'Explication','Décision du comité'],
+    results.listE.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision])
   );
 
-  // Feuille F
   addSheet('F — Correspondances floues D↔E',
-    [`[D] ${cA.nom}`,`[D] ${cA.cin}`,`[D] ${cA.tel}`,`[E] ${cB.nom}`,`[E] ${cB.cin}`,`[E] ${cB.tel}`,'Score global (%)','Explication','Décision du comité'],
-    results.listF.map(i=>[i.rowD[cA.nom]??'',i.rowD[cA.cin]??'',i.rowD[cA.tel]??'',i.rowE[cB.nom]??'',i.rowE[cB.cin]??'',i.rowE[cB.tel]??'',`${i.score}%`,i.explication,i.decision])
+    [`[D] ${cA.nom}`,`[D] ${cA.cin}`,`[D] Montant`,`[D] ${cA.tel}`,...exHdA,
+     `[E] ${cB.nom}`,`[E] ${cB.cin}`,`[E] Montant`,`[E] ${cB.tel}`,...exHdB,
+     'Score global (%)','Explication','Décision du comité'],
+    results.listF.map(i=>[i.rowD[cA.nom]??'',i.rowD[cA.cin]??'',i.rowD[cA.mnt]??'',i.rowD[cA.tel]??'',...exValA(i.rowD),
+                          i.rowE[cB.nom]??'',i.rowE[cB.cin]??'',i.rowE[cB.mnt]??'',i.rowE[cB.tel]??'',...exValB(i.rowE),
+                          `${i.score}%`,i.explication,i.decision])
   );
 
-  // Feuille G
   addSheet('G — Non trouvés dans A',
-    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
-    results.listG.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.tel]??'',i.explication,i.decision])
+    ['Nom complet','CIN','Montant','Téléphone',...exHdAsingle,'Explication','Décision du comité'],
+    results.listG.map(i=>[i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision])
   );
 
-  // Feuille H
   addSheet('H — Non trouvés dans B',
-    ['Nom complet','CIN','Téléphone','Explication','Décision du comité'],
-    results.listH.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.tel]??'',i.explication,i.decision])
+    ['Nom complet','CIN','Montant','Téléphone',...exHdBsingle,'Explication','Décision du comité'],
+    results.listH.map(i=>[i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision])
   );
 
   // Résumé
