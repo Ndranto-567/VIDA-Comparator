@@ -863,12 +863,32 @@ function exportExcel(){
     ]
   );
 
-  const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-  const blob=new Blob([buf],{type:'application/octet-stream'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=`rapport_comparaison_${new Date().toISOString().slice(0,10)}.xlsx`;
-  a.click(); URL.revokeObjectURL(url);
+  try {
+    // Méthode 1 : base64 (fonctionne en local et en ligne)
+    const buf = XLSX.write(wb, {bookType:'xlsx', type:'base64'});
+    const a = document.createElement('a');
+    a.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + buf;
+    a.download = `rapport_comparaison_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch(e) {
+    // Méthode 2 : fallback blob
+    try {
+      const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+      const blob = new Blob([buf], {type:'application/octet-stream'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rapport_comparaison_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    } catch(e2) {
+      showAlert('Erreur export: ' + e2.message + ' — Essayez avec le serveur local (npm run dev) ou GitHub Pages.');
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════
