@@ -452,7 +452,7 @@ function parseMnt(v){
   return isNaN(n)?null:n;
 }
 function mntMatch(a,b){
-  // Returns 1 if within ±5%, 0 if not, null if either is empty
+  // Returns 1 if within ±5% (≥95% égalité), 0 if not, null if either is empty
   if(a===null||b===null) return null;
   if(a===0&&b===0) return null; // both zero treated as empty
   const avg=(Math.abs(a)+Math.abs(b))/2;
@@ -468,18 +468,32 @@ function similarity(rA,rB,cA,cB){
   const sn  = (nomA && nomB) ? jaroWinkler(nomA, nomB) : 0;
   const scin= (cinA && cinB) ? jaroWinkler(cinA, cinB) : 0;
   const smnt= mntMatch(mntA,mntB); // 1, 0, or null
-  // Critère 2 = CIN × Montant : les deux doivent matcher (CIN exact + montant ±5%)
-  const sc  = (scin>=0.95 && smnt===1) ? 1 : (scin>=0.95 && smnt===null) ? scin : (smnt===null && scin<0.95) ? scin : 0;
-  const st  = (telA && telB) ? jaroWinkler(telA, telB) : 0;
-  const mx  = Math.max(sn, sc, st);
+  // Critère 2 : CIN seul (exact)
+  const sc = (cinA && cinB && cinA === cinB) ? 1 : 0;
+
+  // Critère 3 : Téléphone
+  const st = (telA && telB) ? jaroWinkler(telA, telB) : 0;
+
+  // Critère 4 : CIN exact ET Montant ≥95% (±5%)
+  // CIN doit d'abord être exact, puis montant dans ±5%
+  let sc4 = 0;
+  if(cinA && cinB && cinA === cinB) {
+    if(smnt === 1)        sc4 = 1;    // CIN exact + montant ≥95% → validé
+    else if(smnt === null) sc4 = 0;   // montant absent → critère 4 non évaluable
+    else                   sc4 = 0;   // montant hors ±5% → invalidé
+  }
+
+  // Score global = max des 4 critères indépendants
+  const mx = Math.max(sn, sc, st, sc4);
   const matched=[];
-  if(sn>=0.95) matched.push('Nom');
-  if(sc>=0.95) matched.push(smnt===1?'CIN+Montant':'CIN');
-  if(st>=0.95) matched.push('Tél');
+  if(sn>=0.95)  matched.push('Nom');
+  if(sc>=0.95)  matched.push('CIN');
+  if(st>=0.95)  matched.push('Tél');
+  if(sc4>=0.95) matched.push('CIN+Montant');
   return {
     score:Math.round(mx*100),
     matchedOn:matched,
-    mntA, mntB, smnt, st
+    mntA, mntB, smnt, st, sc4
   };
 }
 
