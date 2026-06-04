@@ -479,7 +479,7 @@ function similarity(rA,rB,cA,cB){
   return {
     score:Math.round(mx*100),
     matchedOn:matched,
-    mntA, mntB, smnt
+    mntA, mntB, smnt, st
   };
 }
 
@@ -711,7 +711,11 @@ async function runAnalysis(){
     for(let dIdx=di;dIdx<dEnd;dIdx++){
       for(let ei=0;ei<listE.length;ei++){
         const sim=similarity(listD[dIdx].row,listE[ei].row,cA,cB);
-        if(sim.score>=fThreshold*100){
+        // Téléphone éliminatoire dans F : si les deux sont renseignés et ne correspondent pas → exclusion
+        const telD=normPhone(listD[dIdx].row[cA.tel]||'');
+        const telE=normPhone(listE[ei].row[cB.tel]||'');
+        const telDisqualify=(telD&&telE&&sim.st<0.95);
+        if(!telDisqualify&&sim.score>=fThreshold*100){
           listF.push({rowD:listD[dIdx].row,rowE:listE[ei].row,idxD:listD[dIdx].idxA,idxE:listE[ei].idxB,score:sim.score,explication:"Avec une comparaison plus souple, l'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
         }
         doneF++;
