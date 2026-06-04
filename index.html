@@ -911,7 +911,9 @@ function scoreBadge(s){
 }
 function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-// ═══════════════════════════════════async function exportExcel(){
+
+
+async function exportExcel(){
   if(!results) return;
   // Lazy-load ExcelJS only when needed (avoids conflict with XLSX at startup)
   if(typeof ExcelJS === 'undefined'){
