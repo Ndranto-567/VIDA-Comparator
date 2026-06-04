@@ -294,6 +294,7 @@ textarea{resize:vertical;min-height:56px}
         <div class="col-selector"><div class="col-label">🔵 Numéro CIN <small>(critère 2a)</small></div><select id="acin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🔵 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="amnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🔵 Téléphone <small>(critère 3)</small></div><select id="atel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🔵 Région <small>(incluse dans le numéro ex: REGION-A1)</small></div><select id="areg"><option value="">— optionnel —</option></select></div>
         <div class="col-selector"><div class="col-label">🔵 District <small>(1ère colonne export D et F)</small></div><select id="adist"><option value="">— optionnel —</option></select></div>
         <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
         <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
@@ -306,6 +307,7 @@ textarea{resize:vertical;min-height:56px}
         <div class="col-selector"><div class="col-label">🟡 Numéro CIN <small>(critère 2a)</small></div><select id="bcin" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 Montant <small>(critère 2b — tolérance ±5%)</small></div><select id="bmnt" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 Téléphone <small>(critère 3)</small></div><select id="btel" onchange="checkMapping()"><option value="">— choisir —</option></select></div>
+        <div class="col-selector"><div class="col-label">🟡 Région <small>(incluse dans le numéro ex: REGION-B1)</small></div><select id="breg"><option value="">— optionnel —</option></select></div>
         <div class="col-selector"><div class="col-label">🟡 District <small>(1ère colonne export C, E et G)</small></div><select id="bdist"><option value="">— optionnel —</option></select></div>
         <hr style="border:none;border-top:1px dashed var(--border);margin:4px 0"/>
         <div class="col-label" style="color:var(--ink-muted)">Variables supplémentaires (affichage uniquement)</div>
@@ -527,8 +529,13 @@ function loadFile(file,which){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const json=XLSX.utils.sheet_to_json(ws,{defval:''});
       if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
-      if(which==='A'){dataA=json;headersA=Object.keys(json[0]);}
-      else{dataB=json;headersB=Object.keys(json[0]);}
+      if(which==='A'){
+        dataA=json.map((r,i)=>({...r,'__numA':'A'+(i+1),'__idxA':i}));
+        headersA=Object.keys(json[0]);
+      }else{
+        dataB=json.map((r,i)=>({...r,'__numB':'B'+(i+1),'__idxB':i}));
+        headersB=Object.keys(json[0]);
+      }
       document.getElementById('prompt'+which).style.display='none';
       document.getElementById('success'+which).style.display='block';
       document.getElementById('name'+which).textContent=file.name;
@@ -573,7 +580,7 @@ function goStep2(){
 let extraVars={A:[],B:[]};
 
 function populateSelects(prefix,headers){
-  ['nom','cin','mnt','tel','dist'].forEach(field=>{
+  ['nom','cin','mnt','tel','reg','dist'].forEach(field=>{
     const sel=document.getElementById(prefix+field);
     sel.innerHTML='<option value="">— choisir —</option>';
     headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
@@ -586,6 +593,9 @@ function populateSelects(prefix,headers){
       if(idx>=0) sel.value=headers[idx];
     }else if(field==='mnt'){
       const idx=lh.findIndex(h=>h.includes('mont')||h.includes('amount')||h.includes('somme')||h.includes('salaire')||h.includes('droit'));
+      if(idx>=0) sel.value=headers[idx];
+    }else if(field==='reg'){
+      const idx=lh.findIndex(h=>h.includes('région')||h.includes('region')||h.includes('reg'));
       if(idx>=0) sel.value=headers[idx];
     }else if(field==='dist'){
       const idx=lh.findIndex(h=>h.includes('district')||h.includes('dist'));
@@ -671,8 +681,8 @@ function renderLogicGrid(){
 // ════════════════════════════════════════════════════════
 async function runAnalysis(){
   clearAlert();
-  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,dist:document.getElementById('adist').value,extra:extraVars.A};
-  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,dist:document.getElementById('bdist').value,extra:extraVars.B};
+  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,reg:document.getElementById('areg').value,dist:document.getElementById('adist').value,extra:extraVars.A};
+  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,extra:extraVars.B};
 
   showProgress(true);
   setProgress(0,'Démarrage de l\'analyse…','');
@@ -965,6 +975,18 @@ async function exportExcel(){
   const allColsB=dataB.length?Object.keys(dataB[0]):[];
   addSheet('B — Liste financière (complet)',allColsB,dataB.map(r=>allColsB.map(c=>r[c]??'')));
 
+  // Region-prefixed number helpers
+  const regNumA = (row) => {
+    const reg = cA.reg ? (row[cA.reg]||'').toString().trim() : '';
+    const num = row['__numA'] || '';
+    return reg ? `${reg}-${num}` : num;
+  };
+  const regNumB = (row) => {
+    const reg = cB.reg ? (row[cB.reg]||'').toString().trim() : '';
+    const num = row['__numB'] || '';
+    return reg ? `${reg}-${num}` : num;
+  };
+
   const distHdB=cB.dist?[cB.dist]:[], distHdA=cA.dist?[cA.dist]:[];
   const distValB=row=>cB.dist?[row[cB.dist]??'']:[];
   const distValA=row=>cA.dist?[row[cA.dist]??'']:[];
@@ -977,25 +999,25 @@ async function exportExcel(){
 
   // Feuille C
   {
-    const hd=[...distHdB,`[A] ${cA.nom}`,`[B] ${cB.nom}`,`[A] ${cA.cin}`,`[B] ${cB.cin}`,`[A] ${cA.mnt}`,`[B] ${cB.mnt}`,`[A] ${cA.tel}`,`[B] ${cB.tel}`,...extraPairsHd,'Score (%)','Critère(s)',`Ecart ${cA.mnt}/${cB.mnt}`,'Explication','Décision du comité'];
-    const sp=[...distHdB.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta','meta','meta'];
-    const rws=results.listC.map(i=>{const mA=i.sim?.mntA,mB=i.sim?.mntB;return [...distValB(i.rowB),i.rowA[cA.nom]??'',i.rowB[cB.nom]??'',i.rowA[cA.cin]??'',i.rowB[cB.cin]??'',i.rowA[cA.mnt]??'',i.rowB[cB.mnt]??'',i.rowA[cA.tel]??'',i.rowB[cB.tel]??'',...extraPairsVal(i.rowA,i.rowB),`${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),(mA!=null&&mB!=null)?(mA-mB):'',i.explication,i.decision];});
+    const hd=[...distHdB,'N° A','N° B',`[A] ${cA.nom}`,`[B] ${cB.nom}`,`[A] ${cA.cin}`,`[B] ${cB.cin}`,`[A] ${cA.mnt}`,`[B] ${cB.mnt}`,`[A] ${cA.tel}`,`[B] ${cB.tel}`,...extraPairsHd,'Score (%)','Critère(s)',`Ecart ${cA.mnt}/${cB.mnt}`,'Explication','Décision du comité'];
+    const sp=[...distHdB.map(()=>'single'),'single','single','pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta','meta','meta'];
+    const rws=results.listC.map(i=>{const mA=i.sim?.mntA,mB=i.sim?.mntB;return [...distValB(i.rowB),regNumA(i.rowA),regNumB(i.rowB),i.rowA[cA.nom]??'',i.rowB[cB.nom]??'',i.rowA[cA.cin]??'',i.rowB[cB.cin]??'',i.rowA[cA.mnt]??'',i.rowB[cB.mnt]??'',i.rowA[cA.tel]??'',i.rowB[cB.tel]??'',...extraPairsVal(i.rowA,i.rowB),`${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),(mA!=null&&mB!=null)?(mA-mB):'',i.explication,i.decision];});
     addSheet('C — A∩B (correspondances)',hd,rws,sp);
   }
 
-  addSheet('D — Réclamants absents de B',[...distHdA,cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listD.map(i=>[...distValA(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
-  addSheet('E — Dus sans réclamation',[...distHdB,cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listE.map(i=>[...distValB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
+  addSheet('D — Réclamants absents de B',[...distHdA,'N° A',cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listD.map(i=>[...distValA(i.row),regNumA(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
+  addSheet('E — Dus sans réclamation',[...distHdB,'N° B',cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listE.map(i=>[...distValB(i.row),regNumB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
 
   // Feuille F
   {
-    const hd=[...distHdA,`[D] ${cA.nom}`,`[E] ${cB.nom}`,`[D] ${cA.cin}`,`[E] ${cB.cin}`,`[D] ${cA.mnt}`,`[E] ${cB.mnt}`,`[D] ${cA.tel}`,`[E] ${cB.tel}`,...extraPairsHd,'Score global (%)','Explication','Décision du comité'];
-    const sp=[...distHdA.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta'];
-    const rws=results.listF.map(i=>[...distValA(i.rowD),i.rowD[cA.nom]??'',i.rowE[cB.nom]??'',i.rowD[cA.cin]??'',i.rowE[cB.cin]??'',i.rowD[cA.mnt]??'',i.rowE[cB.mnt]??'',i.rowD[cA.tel]??'',i.rowE[cB.tel]??'',...extraPairsVal(i.rowD,i.rowE),`${i.score}%`,i.explication,i.decision]);
+    const hd=[...distHdA,'N° A',`[D] ${cA.nom}`,`[E] ${cB.nom}`,`[D] ${cA.cin}`,`[E] ${cB.cin}`,`[D] ${cA.mnt}`,`[E] ${cB.mnt}`,`[D] ${cA.tel}`,`[E] ${cB.tel}`,...extraPairsHd,'Score global (%)','Explication','Décision du comité'];
+    const sp=[...distHdA.map(()=>'single'),'single','pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta'];
+    const rws=results.listF.map(i=>[...distValA(i.rowD),regNumA(i.rowD),i.rowD[cA.nom]??'',i.rowE[cB.nom]??'',i.rowD[cA.cin]??'',i.rowE[cB.cin]??'',i.rowD[cA.mnt]??'',i.rowE[cB.mnt]??'',i.rowD[cA.tel]??'',i.rowE[cB.tel]??'',...extraPairsVal(i.rowD,i.rowE),`${i.score}%`,i.explication,i.decision]);
     addSheet('F — Correspondances floues D↔E',hd,rws,sp);
   }
 
-  addSheet('G — Non trouvés dans A',[...distHdB,cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listG.map(i=>[...distValB(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
-  addSheet('H — Non trouvés dans B',[...distHdB,cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listH.map(i=>[...distValB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
+  addSheet('G — Non trouvés dans A',[...distHdB,'N° B',cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listG.map(i=>[...distValB(i.row),regNumB(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
+  addSheet('H — Non trouvés dans B',[...distHdB,'N° B',cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listH.map(i=>[...distValB(i.row),regNumB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
 
   // Résumé
   const wsSummary=wb.addWorksheet('Résumé');
