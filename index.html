@@ -437,9 +437,13 @@ function jaroWinkler(a,b){
   return j+p*0.1*(1-j);
 }
 function similarity(rA,rB,cA,cB){
-  const sn=jaroWinkler(normalize(rA[cA.nom]||''),normalize(rB[cB.nom]||''));
-  const sc=jaroWinkler(normalize(rA[cA.cin]||''),normalize(rB[cB.cin]||''));
-  const st=jaroWinkler(normPhone(rA[cA.tel]),normPhone(rB[cB.tel]));
+  const nomA=normalize(rA[cA.nom]||''), nomB=normalize(rB[cB.nom]||'');
+  const cinA=normalize(rA[cA.cin]||''), cinB=normalize(rB[cB.cin]||'');
+  const telA=normPhone(rA[cA.tel]),     telB=normPhone(rB[cB.tel]);
+  // Vide != Vide : si l'un des deux cotes est vide, score = 0 pour ce critere
+  const sn = (nomA && nomB) ? jaroWinkler(nomA, nomB) : 0;
+  const sc = (cinA && cinB) ? jaroWinkler(cinA, cinB) : 0;
+  const st = (telA && telB) ? jaroWinkler(telA, telB) : 0;
   const mx=Math.max(sn,sc,st);
   return {
     score:Math.round(mx*100),
