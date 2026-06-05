@@ -166,6 +166,28 @@ textarea{resize:vertical;min-height:56px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .fade{animation:fadeIn .3s ease both}
 
+/* ── Nav tabs ───────────────────────────────────────── */
+.app-nav{display:flex;align-items:center;gap:4px;margin-left:24px}
+.nav-tab{background:transparent;color:rgba(255,255,255,.5);padding:6px 16px;border-radius:6px;font-size:13px;font-weight:500;border:1.5px solid transparent;transition:all .18s}
+.nav-tab:hover{color:white;background:rgba(255,255,255,.08)}
+.nav-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(201,168,76,.1)}
+
+/* ── Consolidation ──────────────────────────────────── */
+.consol-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:28px}
+.consol-target{background:color-mix(in srgb,var(--teal) 5%,white);border:2px solid var(--teal);border-radius:var(--radius-lg);padding:20px 22px}
+.consol-source{background:color-mix(in srgb,var(--gold) 5%,white);border:2px solid var(--gold);border-radius:var(--radius-lg);padding:20px 22px}
+.consol-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.consol-history{background:white;border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-top:16px;max-height:200px;overflow-y:auto}
+.consol-history-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+.consol-history-item:last-child{border-bottom:none}
+.consol-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--green-pale);color:var(--green)}
+.mapping-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.mapping-pair .arrow{color:var(--ink-muted);font-weight:700;text-align:center;font-size:16px}
+.consol-stats{display:flex;gap:16px;padding:16px 28px;background:var(--paper);border-top:1px solid var(--border)}
+.consol-stat{text-align:center}
+.consol-stat-val{font-family:'DM Serif Display',serif;font-size:24px;color:var(--teal)}
+.consol-stat-lbl{font-size:10px;color:var(--ink-muted);font-weight:500}
+
 @media(max-width:800px){
   .upload-grid{grid-template-columns:1fr}.vs-divider{display:none}
   .mapping-grid{grid-template-columns:1fr}
@@ -189,7 +211,14 @@ textarea{resize:vertical;min-height:56px}
         <div class="brand-sub">Réclamations &amp; Droits — Outil de comparaison</div>
       </div>
     </div>
-    <button class="btn-export" id="btnExport" style="display:none" onclick="exportExcel()">↓ Exporter le rapport Excel</button>
+    <nav class="app-nav">
+      <button class="nav-tab active" id="navCompar" onclick="switchModule('compar')">⚖ Comparaison</button>
+      <button class="nav-tab" id="navConsol" onclick="switchModule('consol')">📥 Consolidation</button>
+    </nav>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-export" id="btnExport" style="display:none" onclick="exportExcel()">↓ Exporter rapport</button>
+      <button class="btn-export" id="btnExportConsol" style="display:none" onclick="exportConsol()">↓ Exporter consolidé</button>
+    </div>
   </div>
 </header>
 
@@ -207,6 +236,101 @@ textarea{resize:vertical;min-height:56px}
 </div>
 
 <main class="app-main">
+
+<!-- ══ MODULE CONSOLIDATION ══ -->
+<div id="moduleConsol" style="display:none">
+
+  <div class="card fade">
+    <div class="card-header">
+      <h2>Consolidation de fichiers Excel</h2>
+      <p>Chargez une feuille cible (fixe) puis ajoutez des sources une par une — les lignes s'empilent dans la cible</p>
+    </div>
+
+    <div class="consol-grid">
+      <!-- Feuille cible -->
+      <div class="consol-target">
+        <div class="consol-label" style="color:var(--teal)">
+          📌 Feuille cible (fixe)
+          <span id="consolTargetBadge" style="display:none" class="consol-badge">✓ Chargée</span>
+        </div>
+        <div id="consolTargetPrompt">
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px">Cette feuille reste fixe. Les sources viendront s'y ajouter.</div>
+          <label class="btn-upload" style="background:var(--teal)">
+            Choisir le fichier cible
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadConsolTarget(this.files[0])">
+          </label>
+        </div>
+        <div id="consolTargetInfo" style="display:none">
+          <div style="font-size:13px;font-weight:600" id="consolTargetName"></div>
+          <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="consolTargetStats"></div>
+          <button class="btn-ghost" style="font-size:11px;margin-top:8px;padding:4px 10px" onclick="resetConsolTarget()">✕ Changer la cible</button>
+        </div>
+        <!-- Historique consolidations -->
+        <div id="consolHistory" style="display:none">
+          <div style="font-size:11px;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:16px;margin-bottom:6px">Consolidations effectuées</div>
+          <div class="consol-history" id="consolHistoryList"></div>
+        </div>
+      </div>
+
+      <!-- Feuille source -->
+      <div class="consol-source">
+        <div class="consol-label" style="color:var(--gold)">
+          ➕ Feuille source (à ajouter)
+          <span id="consolSourceBadge" style="display:none" class="consol-badge" style="background:var(--gold-pale);color:var(--gold)">✓ Prête</span>
+        </div>
+        <div id="consolSourcePrompt">
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px">Chargez un fichier source. Mappez ses colonnes sur la cible, puis consolidez.</div>
+          <label class="btn-upload" style="background:var(--gold)">
+            Choisir un fichier source
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadConsolSource(this.files[0])">
+          </label>
+        </div>
+        <div id="consolSourceInfo" style="display:none">
+          <div style="font-size:13px;font-weight:600" id="consolSourceName"></div>
+          <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="consolSourceStats"></div>
+          <button class="btn-ghost" style="font-size:11px;margin-top:8px;padding:4px 10px" onclick="resetConsolSource()">✕ Changer la source</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mapping colonnes -->
+    <div id="consolMappingSection" style="display:none;padding:0 28px 20px">
+      <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">
+        Mapping des colonnes — Source → Cible
+        <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted)"> (laissez vide pour ignorer une colonne)</small>
+      </div>
+      <div id="consolMappingPairs"></div>
+    </div>
+
+    <!-- Stats + action -->
+    <div class="consol-stats" id="consolStatsBar" style="display:none">
+      <div class="consol-stat"><div class="consol-stat-val" id="cStatTarget">0</div><div class="consol-stat-lbl">Lignes cible</div></div>
+      <div class="consol-stat"><div class="consol-stat-val" style="color:var(--gold)" id="cStatSource">0</div><div class="consol-stat-lbl">Lignes source</div></div>
+      <div class="consol-stat"><div class="consol-stat-val" style="color:var(--green)" id="cStatTotal">0</div><div class="consol-stat-lbl">Total après consolidation</div></div>
+      <div class="consol-stat"><div class="consol-stat-val" style="color:var(--purple,#6c3483)" id="cStatRounds">0</div><div class="consol-stat-lbl">Consolidations</div></div>
+    </div>
+
+    <div class="card-footer">
+      <button class="btn-ghost" id="btnConsolPreview" style="display:none" onclick="previewConsol()">👁 Aperçu</button>
+      <button class="btn-primary" id="btnConsolRun" style="display:none" onclick="runConsol()">➕ Consolider</button>
+    </div>
+  </div>
+
+  <!-- Preview table -->
+  <div id="consolPreviewSection" style="display:none" class="card fade">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div><h2>Aperçu du fichier consolidé</h2><p id="consolPreviewInfo"></p></div>
+      <button class="btn-export" onclick="exportConsol()">↓ Exporter le fichier consolidé</button>
+    </div>
+    <div class="table-wrap scrollbar-thin" style="max-height:420px;overflow-y:auto">
+      <table class="result-table" id="consolPreviewTable"></table>
+    </div>
+  </div>
+
+</div><!-- end moduleConsol -->
+
+<!-- ══ MODULE COMPARAISON ══ -->
+<div id="moduleCompar">
 
   <!-- STEPS -->
   <div class="steps" id="stepsBar">
@@ -401,6 +525,7 @@ textarea{resize:vertical;min-height:56px}
     <div id="tableArea"></div>
   </div>
 
+</div><!-- end moduleCompar -->
 </main>
 <footer class="app-footer">
   <span>ComparListes © 2026 — Outil de comparaison de réclamations &amp; droits</span>
@@ -511,8 +636,9 @@ function similarity(rA,rB,cA,cB){
   // Critère 2 : CIN seul (exact)
   const sc = (cinA && cinB && cinA === cinB) ? 1 : 0;
 
-  // Critère 3 : Téléphone
-  const st = (telA && telB) ? jaroWinkler(telA, telB) : 0;
+  // Critère 3 : Téléphone — égalité stricte (pas Jaro-Winkler)
+  // Un seul chiffre différent = numéro différent = 0
+  const st = (telA && telB && telA === telB) ? 1 : 0;
 
   // Critère 4 : CIN exact ET Montant ≥95% (±5%)
   // CIN doit d'abord être exact, puis montant dans ±5%
@@ -780,7 +906,7 @@ async function runAnalysis(){
         // Téléphone éliminatoire dans F : si les deux sont renseignés et ne correspondent pas → exclusion
         const telD=normPhone(listD[dIdx].row[cA.tel]||'');
         const telE=normPhone(listE[ei].row[cB.tel]||'');
-        const telDisqualify=(telD&&telE&&sim.st<0.95);
+        const telDisqualify=(telD&&telE&&sim.st<1);
         if(!telDisqualify&&sim.score>=fThreshold*100){
           listF.push({rowD:listD[dIdx].row,rowE:listE[ei].row,idxD:listD[dIdx].idxA,idxE:listE[ei].idxB,score:sim.score,explication:"Avec une comparaison plus souple, l'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
         }
@@ -1097,6 +1223,283 @@ async function exportExcel(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url; a.download=`rapport_comparaison_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){showAlert('Erreur export: '+e.message);}
+  finally{showProgress(false);}
+}
+
+// ════════════════════════════════════════════════════════
+// MODULE SWITCH
+// ════════════════════════════════════════════════════════
+function switchModule(mod){
+  document.getElementById('moduleCompar').style.display = mod==='compar'?'block':'none';
+  document.getElementById('moduleConsol').style.display = mod==='consol'?'block':'none';
+  document.getElementById('navCompar').classList.toggle('active', mod==='compar');
+  document.getElementById('navConsol').classList.toggle('active', mod==='consol');
+  document.getElementById('btnExport').style.display      = (mod==='compar'&&results)?'block':'none';
+  document.getElementById('btnExportConsol').style.display= (mod==='consol'&&consolData.length)?'block':'none';
+}
+
+// ════════════════════════════════════════════════════════
+// CONSOLIDATION STATE
+// ════════════════════════════════════════════════════════
+let consolTarget   = null;   // {data:[], headers:[]}
+let consolSource   = null;   // {data:[], headers:[]}
+let consolData     = [];     // accumulated rows
+let consolHeaders  = [];     // final column list
+let consolRounds   = 0;
+let consolHistory  = [];     // [{name, rows}]
+
+// ── File loaders ────────────────────────────────────────
+function loadConsolTarget(file){
+  if(!file) return;
+  readXlsx(file, (data,headers)=>{
+    consolTarget  = {data, headers, name:file.name};
+    consolData    = [...data];
+    consolHeaders = [...headers];
+    consolRounds  = 0;
+    consolHistory = [];
+    document.getElementById('consolTargetPrompt').style.display='none';
+    document.getElementById('consolTargetInfo').style.display='block';
+    document.getElementById('consolTargetBadge').style.display='inline';
+    document.getElementById('consolTargetName').textContent=file.name;
+    document.getElementById('consolTargetStats').textContent=`${data.length} lignes · ${headers.length} colonnes`;
+    document.getElementById('consolHistory').style.display='none';
+    document.getElementById('consolHistoryList').innerHTML='';
+    updateConsolStats();
+    tryShowMapping();
+  });
+}
+function loadConsolSource(file){
+  if(!file) return;
+  readXlsx(file, (data,headers)=>{
+    consolSource={data,headers,name:file.name};
+    document.getElementById('consolSourcePrompt').style.display='none';
+    document.getElementById('consolSourceInfo').style.display='block';
+    document.getElementById('consolSourceBadge').style.display='inline';
+    document.getElementById('consolSourceName').textContent=file.name;
+    document.getElementById('consolSourceStats').textContent=`${data.length} lignes · ${headers.length} colonnes`;
+    updateConsolStats();
+    tryShowMapping();
+  });
+}
+function resetConsolTarget(){
+  consolTarget=null; consolData=[]; consolHeaders=[]; consolRounds=0; consolHistory=[];
+  document.getElementById('consolTargetPrompt').style.display='block';
+  document.getElementById('consolTargetInfo').style.display='none';
+  document.getElementById('consolTargetBadge').style.display='none';
+  document.getElementById('consolMappingSection').style.display='none';
+  document.getElementById('consolStatsBar').style.display='none';
+  document.getElementById('btnConsolRun').style.display='none';
+  document.getElementById('btnConsolPreview').style.display='none';
+  document.getElementById('consolPreviewSection').style.display='none';
+  document.getElementById('btnExportConsol').style.display='none';
+}
+function resetConsolSource(){
+  consolSource=null;
+  document.getElementById('consolSourcePrompt').style.display='block';
+  document.getElementById('consolSourceInfo').style.display='none';
+  document.getElementById('consolSourceBadge').style.display='none';
+  document.getElementById('consolMappingSection').style.display='none';
+  document.getElementById('btnConsolRun').style.display='none';
+  document.getElementById('btnConsolPreview').style.display='none';
+}
+
+// ── Generic XLSX reader ──────────────────────────────────
+function readXlsx(file, cb){
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!json.length){showAlert('Fichier vide.');return;}
+      cb(json, Object.keys(json[0]));
+    }catch(e){showAlert('Erreur lecture: '+e.message);}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Build mapping UI ─────────────────────────────────────
+function tryShowMapping(){
+  if(!consolTarget||!consolSource) return;
+  const section=document.getElementById('consolMappingSection');
+  const pairs=document.getElementById('consolMappingPairs');
+  section.style.display='block';
+  pairs.innerHTML='';
+
+  // Auto-match columns by name similarity
+  consolSource.headers.forEach((srcCol,i)=>{
+    const matchIdx = consolHeaders.findIndex(tc=>
+      tc.toLowerCase().trim()===srcCol.toLowerCase().trim()
+    );
+    const div=document.createElement('div');
+    div.className='mapping-pair';
+    div.innerHTML=`
+      <div style="font-size:12px;padding:6px 10px;background:color-mix(in srgb,var(--gold) 10%,white);border-radius:6px;border:1px solid color-mix(in srgb,var(--gold) 25%,transparent)">
+        ${escH(srcCol)}</div>
+      <div class="arrow">→</div>
+      <select id="cmap_${i}" style="font-size:12px">
+        <option value="">— ignorer —</option>
+        ${consolHeaders.map((tc,ti)=>`<option value="${escH(tc)}" ${ti===matchIdx?'selected':''}>${escH(tc)}</option>`).join('')}
+      </select>`;
+    pairs.appendChild(div);
+  });
+  document.getElementById('consolStatsBar').style.display='flex';
+  document.getElementById('btnConsolRun').style.display='block';
+  document.getElementById('btnConsolPreview').style.display='block';
+  updateConsolStats();
+}
+function escH(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ── Get mapping ──────────────────────────────────────────
+function getMapping(){
+  return consolSource.headers.map((srcCol,i)=>{
+    const sel=document.getElementById('cmap_'+i);
+    return {src:srcCol, tgt:sel?sel.value:''};
+  }).filter(m=>m.tgt);
+}
+
+// ── Stats ────────────────────────────────────────────────
+function updateConsolStats(){
+  const tRows=consolData.length;
+  const sRows=consolSource?consolSource.data.length:0;
+  document.getElementById('cStatTarget').textContent=tRows;
+  document.getElementById('cStatSource').textContent=sRows;
+  document.getElementById('cStatTotal').textContent=tRows+sRows;
+  document.getElementById('cStatRounds').textContent=consolRounds;
+}
+
+// ── Run consolidation ────────────────────────────────────
+function runConsol(){
+  if(!consolTarget||!consolSource){showAlert('Chargez les deux fichiers.');return;}
+  const mapping=getMapping();
+  if(!mapping.length){showAlert('Mappez au moins une colonne.');return;}
+
+  // Build new rows from source using mapping
+  const newRows=consolSource.data.map(srcRow=>{
+    const newRow={};
+    // Init with empty values for all target columns
+    consolHeaders.forEach(h=>{newRow[h]='';});
+    // Fill mapped columns
+    mapping.forEach(({src,tgt})=>{ newRow[tgt]=srcRow[src]??''; });
+    // Tag with source file name
+    newRow['__source']=consolSource.name;
+    return newRow;
+  });
+
+  // Ensure __source column exists
+  if(!consolHeaders.includes('__source')){
+    consolHeaders.push('__source');
+    consolData.forEach(r=>{if(r['__source']===undefined) r['__source']=consolTarget.name;});
+  }
+
+  consolData=[...consolData,...newRows];
+  consolRounds++;
+
+  // Log history
+  consolHistory.push({name:consolSource.name, rows:consolSource.data.length});
+  const histEl=document.getElementById('consolHistoryList');
+  const item=document.createElement('div');
+  item.className='consol-history-item';
+  item.innerHTML=`<span>${escH(consolSource.name)}</span><span class="consol-badge">+${consolSource.data.length} lignes</span>`;
+  histEl.appendChild(item);
+  document.getElementById('consolHistory').style.display='block';
+  document.getElementById('consolTargetStats').textContent=
+    `${consolTarget.data.length} lignes initiales · ${consolRounds} consolidation(s) · ${consolData.length} lignes total`;
+
+  // Show export button
+  document.getElementById('btnExportConsol').style.display='block';
+
+  // Reset source for next round
+  resetConsolSource();
+  updateConsolStats();
+  previewConsol();
+}
+
+// ── Preview ──────────────────────────────────────────────
+function previewConsol(){
+  if(!consolData.length) return;
+  const section=document.getElementById('consolPreviewSection');
+  section.style.display='block';
+  const cols=consolHeaders.filter(h=>h!=='__source');
+  const maxPreview=200;
+  const shown=Math.min(consolData.length,maxPreview);
+  document.getElementById('consolPreviewInfo').textContent=
+    `${consolData.length} lignes · ${cols.length} colonnes${consolData.length>maxPreview?' (aperçu: '+maxPreview+' premières lignes)':''}`;
+
+  let html=`<thead><tr>${cols.map(h=>`<th>${escH(h)}</th>`).join('')}</tr></thead><tbody>`;
+  for(let i=0;i<shown;i++){
+    const r=consolData[i];
+    html+=`<tr>${cols.map(c=>`<td>${escH(String(r[c]??''))}</td>`).join('')}</tr>`;
+  }
+  html+='</tbody>';
+  document.getElementById('consolPreviewTable').innerHTML=html;
+}
+
+// ── Export consolidated ──────────────────────────────────
+async function exportConsol(){
+  if(!consolData.length){showAlert('Aucune donnée à exporter.');return;}
+  showProgress(true);
+  setProgress(0,'Chargement ExcelJS…','');
+  await sleep(20);
+
+  if(typeof ExcelJS==='undefined'){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+      s.onload=res; s.onerror=()=>rej(new Error('Impossible de charger ExcelJS'));
+      document.head.appendChild(s);
+    });
+  }
+
+  const cols=consolHeaders.filter(h=>h!=='__source');
+  const DARK='FF1A1A2E',WHITE='FFFFFFFF',TEAL='FF2A7D8C';
+  const fillS=argb=>({type:'pattern',pattern:'solid',fgColor:{argb}});
+  const brd=()=>({top:{style:'thin',color:{argb:'FFCCCCCC'}},bottom:{style:'thin',color:{argb:'FFCCCCCC'}},left:{style:'thin',color:{argb:'FFCCCCCC'}},right:{style:'thin',color:{argb:'FFCCCCCC'}}});
+
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('Consolidé');
+  ws.columns=[...cols,'Source'].map(h=>({header:String(h??''),width:24}));
+  ws.getRow(1).eachCell(cell=>{
+    cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};
+    cell.border=brd();cell.alignment={vertical:'middle'};
+  });
+
+  const total=consolData.length;
+  consolData.forEach((row,ri)=>{
+    const vals=[...cols.map(c=>row[c]??''), row['__source']??''];
+    const wsRow=ws.addRow(vals);
+    wsRow.eachCell(cell=>{
+      cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};
+      cell.border=brd();cell.alignment={vertical:'middle',wrapText:true};
+    });
+    if(ri%500===0) setProgress(10+(ri/total*80),'Export en cours…',`${ri}/${total} lignes`);
+  });
+
+  // Summary sheet
+  const wsSumm=wb.addWorksheet('Résumé');
+  wsSumm.columns=[{header:'Source',width:40},{header:'Lignes',width:12}];
+  wsSumm.getRow(1).eachCell(cell=>{cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};cell.border=brd();});
+  [[consolTarget.name, consolTarget.data.length],
+   ...consolHistory.map(h=>[h.name,h.rows]),
+   ['TOTAL',consolData.length]
+  ].forEach(r=>{
+    const row=wsSumm.addRow(r);
+    row.eachCell(cell=>{cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};cell.border=brd();});
+  });
+
+  setProgress(92,'Génération du fichier…','');
+  await sleep(20);
+  try{
+    const buf=await wb.xlsx.writeBuffer();
+    setProgress(100,'Téléchargement…','');
+    await sleep(150);
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=`consolide_${new Date().toISOString().slice(0,10)}.xlsx`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){showAlert('Erreur export: '+e.message);}
