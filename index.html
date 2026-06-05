@@ -292,6 +292,19 @@ textarea{resize:vertical;min-height:56px}
     <div style="padding:18px 28px 0">
       <div class="mapping-block" style="border-top:3px solid var(--purple,#6c3483);margin-bottom:4px">
         <div class="mapping-title" style="color:var(--purple,#6c3483)">📍 Localisation <small style="font-weight:400;color:var(--ink-muted)">(commune aux deux fichiers — colonnes de référence)</small></div>
+        <!-- Option codification -->
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;padding:10px 14px;background:var(--paper-warm);border-radius:var(--radius);border:1px solid var(--border)">
+          <span style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px">Codification des numéros de ligne</span>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="codifMode" id="codifReg" value="reg" checked> Région <small style="color:var(--ink-muted)">(ex: ANALAMANGA-A1)</small>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="codifMode" id="codifDist" value="dist"> District <small style="color:var(--ink-muted)">(ex: AMBOHIDRATRIMO-A1)</small>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="codifMode" id="codifNone" value="none"> Numéro seul <small style="color:var(--ink-muted)">(ex: A1)</small>
+          </label>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;align-items:end">
           <div class="col-selector">
             <div class="col-label" style="white-space:nowrap">🔵 Région A <small>(ex: ANALAMANGA-A1)</small></div>
@@ -704,7 +717,8 @@ function renderLogicGrid(){
 // ════════════════════════════════════════════════════════
 async function runAnalysis(){
   clearAlert();
-  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,reg:document.getElementById('areg').value,dist:document.getElementById('adist').value,extra:extraVars.A};
+  const codifMode=document.querySelector('input[name="codifMode"]:checked')?.value||'reg';
+  const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,reg:document.getElementById('areg').value,dist:document.getElementById('adist').value,extra:extraVars.A,codifMode};
   const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,extra:extraVars.B};
 
   showProgress(true);
@@ -948,6 +962,9 @@ function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 
 async function exportExcel(){
   if(!results) return;
+  showProgress(true);
+  setProgress(0,'Chargement de la librairie…','');
+  await sleep(30);
   // Lazy-load ExcelJS only when needed (avoids conflict with XLSX at startup)
   if(typeof ExcelJS === 'undefined'){
     await new Promise((resolve,reject)=>{
@@ -959,16 +976,19 @@ async function exportExcel(){
   }
   const cA=results.colsA, cB=results.colsB;
 
-  // Region-prefixed number helpers — déclarés en premier
+  // Codification helpers — déclarés en premier
+  const codifMode = cA.codifMode || 'reg';
   const regNumA = (row) => {
-    const reg = cA.reg ? (row[cA.reg]||'').toString().trim() : '';
     const num = row['__numA'] || '';
-    return reg ? `${reg}-${num}` : num;
+    if(codifMode === 'reg')  { const v=(cA.reg  ? row[cA.reg]  : '')||''; return v ? `${v.toString().trim()}-${num}` : num; }
+    if(codifMode === 'dist') { const v=(cA.dist ? row[cA.dist] : '')||''; return v ? `${v.toString().trim()}-${num}` : num; }
+    return num;
   };
   const regNumB = (row) => {
-    const reg = cB.reg ? (row[cB.reg]||'').toString().trim() : '';
     const num = row['__numB'] || '';
-    return reg ? `${reg}-${num}` : num;
+    if(codifMode === 'reg')  { const v=(cB.reg  ? row[cB.reg]  : '')||''; return v ? `${v.toString().trim()}-${num}` : num; }
+    if(codifMode === 'dist') { const v=(cB.dist ? row[cB.dist] : '')||''; return v ? `${v.toString().trim()}-${num}` : num; }
+    return num;
   };
 
   const GREEN='FFBFFDF4', RED='FFFAC6D9', DARK='FF1A1A2E', WHITE='FFFFFFFF';
@@ -979,30 +999,45 @@ async function exportExcel(){
   const wb=new ExcelJS.Workbook();
   wb.creator='ComparListes'; wb.created=new Date();
 
+  // Pre-built shared style objects (reused across all cells = much faster)
+  const STYLE_HDR  = {fill:fillS(DARK),font:fontS(WHITE,true), border:brd(),alignment:{vertical:'middle'}};
+  const STYLE_WHITE= {fill:fillS(WHITE),font:fontS(DARK,false),border:brd(),alignment:{vertical:'middle',wrapText:true}};
+  const STYLE_GREEN= {fill:fillS(GREEN),font:fontS(DARK,false),border:brd(),alignment:{vertical:'middle',wrapText:true}};
+  const STYLE_RED  = {fill:fillS(RED),  font:fontS(DARK,false),border:brd(),alignment:{vertical:'middle',wrapText:true}};
+
+  let exportSheetsDone=0, exportSheetsTotal=8;
+  function exportSetProgress(sheetName, rowDone, rowTotal){
+    const base = (exportSheetsDone / exportSheetsTotal) * 90;
+    const inSheet = rowTotal > 0 ? (rowDone / rowTotal) * (90 / exportSheetsTotal) : 0;
+    setProgress(Math.min(base + inSheet, 90), `Export : ${sheetName}`, `${rowDone} / ${rowTotal} lignes`);
+  }
+
   function addSheet(name,headers,rows,spec){
     const ws=wb.addWorksheet(name);
     ws.columns=headers.map(h=>({header:String(h??''),width:26}));
-    ws.getRow(1).eachCell(cell=>{cell.fill=fillS(DARK);cell.font=fontS(WHITE,true);cell.border=brd();cell.alignment={vertical:'middle'};});
-    rows.forEach(row=>{
+    ws.getRow(1).eachCell(cell=>{ Object.assign(cell, STYLE_HDR); });
+    const total=rows.length;
+    rows.forEach((row,ri)=>{
       const wsRow=ws.addRow(row.map(v=>v??''));
       wsRow.eachCell({includeEmpty:true},(cell,colNum)=>{
         const ci=colNum-1;
         const s=spec?spec[ci]:'single';
-        cell.border=brd(); cell.alignment={vertical:'middle',wrapText:true};
-        cell.font=fontS(DARK,false);
         if(s==='pairA'){
           const vA=String(row[ci]??'').trim().toLowerCase();
           const vB=String(row[ci+1]??'').trim().toLowerCase();
-          cell.fill=fillS((vA&&vB)?(vA===vB?GREEN:RED):WHITE);
+          Object.assign(cell, (vA&&vB)?(vA===vB?STYLE_GREEN:STYLE_RED):STYLE_WHITE);
         }else if(s==='pairB'){
           const vA=String(row[ci-1]??'').trim().toLowerCase();
           const vB=String(row[ci]??'').trim().toLowerCase();
-          cell.fill=fillS((vA&&vB)?(vA===vB?GREEN:RED):WHITE);
+          Object.assign(cell, (vA&&vB)?(vA===vB?STYLE_GREEN:STYLE_RED):STYLE_WHITE);
         }else{
-          cell.fill=fillS(WHITE);
+          Object.assign(cell, STYLE_WHITE);
         }
       });
+      if(ri % 200 === 0) exportSetProgress(name, ri, total);
     });
+    exportSheetsDone++;
+    exportSetProgress(name, total, total);
   }
 
   const allColsA=dataA.length?Object.keys(dataA[0]).filter(k=>!k.startsWith('__')):[];
@@ -1052,8 +1087,12 @@ async function exportExcel(){
   wsSummary.getRow(1).eachCell(cell=>{cell.fill=fillS(DARK);cell.font=fontS(WHITE,true);cell.border=brd();});
   [['A','Fichier source — Réclamants',dataA.length],['B','Fichier source — Liste initiale (requête)',dataB.length],['C','A ∩ B — Correspondances exactes',results.listC.length],['D','A \\ B — Réclamants absents de B',results.listD.length],['E','B \\ A — Dus sans réclamation',results.listE.length],['F','Correspondances floues D ↔ E',results.listF.length],['G','Non trouvés côté A',results.listG.length],['H','Non trouvés côté B',results.listH.length],['','Généré le',new Date().toLocaleString('fr-FR')],['','Seuil liste F',threshold+'%']].forEach(r=>{const row=wsSummary.addRow(r);row.eachCell(c=>{c.fill=fillS(WHITE);c.font=fontS(DARK,false);c.border=brd();});});
 
+  setProgress(90,'Génération du fichier Excel…','Compression en cours…');
+  await sleep(30);
   try{
     const buf=await wb.xlsx.writeBuffer();
+    setProgress(100,'Téléchargement…','');
+    await sleep(200);
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -1061,6 +1100,7 @@ async function exportExcel(){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){showAlert('Erreur export: '+e.message);}
+  finally{showProgress(false);}
 }
 
 // ════════════════════════════════════════════════════════
