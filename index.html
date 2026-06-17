@@ -447,6 +447,12 @@ textarea{resize:vertical;min-height:56px}
             <select id="bdist"><option value="">— optionnel —</option></select>
           </div>
         </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+          <div class="col-selector" style="max-width:340px">
+            <div class="col-label" style="white-space:nowrap">🟡 Paiement — Fichier B <small>(valeurs "PAYE"/"NON PAYE" — active la décision automatique en C)</small></div>
+            <select id="bpaiement"><option value="">— optionnel —</option></select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -742,8 +748,9 @@ function goStep2(){
 let extraVars={A:[],B:[]};
 
 function populateSelects(prefix,headers){
-  ['nom','cin','mnt','tel','reg','dist'].forEach(field=>{
+  ['nom','cin','mnt','tel','reg','dist','paiement'].forEach(field=>{
     const sel=document.getElementById(prefix+field);
+    if(!sel) return;
     sel.innerHTML='<option value="">— choisir —</option>';
     headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
     const lh=headers.map(h=>h.toLowerCase());
@@ -755,6 +762,9 @@ function populateSelects(prefix,headers){
       if(idx>=0) sel.value=headers[idx];
     }else if(field==='mnt'){
       const idx=lh.findIndex(h=>h.includes('mont')||h.includes('amount')||h.includes('somme')||h.includes('salaire')||h.includes('droit'));
+      if(idx>=0) sel.value=headers[idx];
+    }else if(field==='paiement'){
+      const idx=lh.findIndex(h=>h.includes('paiement')||h.includes('payment')||h.includes('paye'));
       if(idx>=0) sel.value=headers[idx];
     }else if(field==='reg'){
       const idx=lh.findIndex(h=>h.includes('région')||h.includes('region')||h.includes('reg'));
@@ -799,7 +809,14 @@ function renderExtraRow(which,idx,headers){
   sel.innerHTML='<option value="">— colonne —</option>';
   headers.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o);});
   if(extraVars[which][idx].col) sel.value=extraVars[which][idx].col;
-  sel.onchange=e=>{extraVars[which][idx].col=e.target.value;};
+  sel.onchange=e=>{
+    extraVars[which][idx].col=e.target.value;
+    // Auto-fill label with column name if label is still default
+    if(e.target.value && (extraVars[which][idx].label==='' || extraVars[which][idx].label.startsWith('Variable '))){
+      extraVars[which][idx].label=e.target.value;
+      inp.value=e.target.value;
+    }
+  };
   const btn=document.createElement('button');
   btn.type='button'; btn.textContent='✕';
   btn.style.cssText='background:transparent;color:var(--ink-muted);border:none;cursor:pointer;font-size:14px;padding:2px 5px';
@@ -841,11 +858,117 @@ function renderLogicGrid(){
 // ════════════════════════════════════════════════════════
 // ANALYSIS (async with progress)
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// RÈGLE DE DÉCISION AUTOMATIQUE — Liste C
+// ════════════════════════════════════════════════════════
+function applyDecisionRules(listC, cA, cB){
+  if(!cB.paiement) return; // pas de colonne Paiement mappée → ne rien automatiser
+
+  // Regrouper par N° B pour détecter les doublons
+  const groupsByNumB = {};
+  listC.forEach((item,i)=>{
+    const numB = item.rowB['__numB'] || ('idx'+item.idxB);
+    if(!groupsByNumB[numB]) groupsByNumB[numB]=[];
+    groupsByNumB[numB].push(i);
+  });
+
+  listC.forEach((item,i)=>{
+    const rowA=item.rowA, rowB=item.rowB;
+    const paiementVal = String(rowB[cB.paiement]||'').trim().toUpperCase();
+    const criteres = item.sim?.matchedOn||[];
+    const nbCriteres = criteres.length;
+
+    const telA = normPhone(rowA[cA.tel]||'');
+    const telB = normPhone(rowB[cB.tel]||'');
+    const numB = rowB['__numB'] || ('idx'+item.idxB);
+    const group = groupsByNumB[numB]||[i];
+    const hasDuplicate = group.length>1;
+
+    // ── #0 : déjà payé ─────────────────────────────────────
+    if(paiementVal==='PAYE'){
+      item.explication="L'acteur figure dans la liste initiale, mais déjà payé selon les données de l'UCP";
+      item.decision='DP';
+      return;
+    }
+
+    // ── #1 : aucun téléphone des deux côtés ────────────────
+    if(!telA && !telB){
+      item.explication="Aucun numéro de téléphone disponible (ni [A] ni [B]) pour vérification croisée";
+      item.decision='VM';
+      return;
+    }
+
+    // ── #2 : un seul critère validé (structurellement nbCriteres>=1 dans C) ──
+    if(nbCriteres===1){
+      item.explication=`L'acteur figure dans la liste initiale avec une seule correspondance ("${criteres[0]}") — fiabilité insuffisante`;
+      item.decision='VM';
+      return;
+    }
+
+    // ── #3+ : 2+ critères validés ──────────────────────────
+    const critTxt = criteres.map(c=>`"${c}"`).join(', ');
+    let baseExpl = `L'acteur figure dans la liste initiale avec une correspondance ${critTxt}`;
+
+    const telDiffBothSet = (telA && telB && telA!==telB);
+    if(telDiffBothSet){
+      baseExpl += `. Numéros de téléphone différents entre [A] (${rowA[cA.tel]}) et [B] (${rowB[cB.tel]}) — vérifier quel numéro utiliser`;
+    }
+
+    // ── Pas de doublon → AP direct (#3/#4) ──────────────────
+    if(!hasDuplicate){
+      item.explication = baseExpl;
+      item.decision='AP';
+      return;
+    }
+
+    // ── Avec doublon sur N° B (#5a/#5b/#5c) ─────────────────
+    const mntB = parseMnt(rowB[cB.mnt]);
+
+    // #5a : comparer les montants [A] du groupe à montant [B]
+    let bestIdx=-1, bestDist=Infinity;
+    group.forEach(gi=>{
+      const mA=parseMnt(listC[gi].rowA[cA.mnt]);
+      if(mA!==null && mntB!==null){
+        const d=Math.abs(mA-mntB);
+        if(d<bestDist){bestDist=d; bestIdx=gi;}
+      }
+    });
+
+    if(bestIdx>=0){
+      // Au moins un montant [A] comparable dans le groupe
+      if(i===bestIdx){
+        item.explication = baseExpl + ` (doublon sur N° B — montant [A] le plus proche du montant [B] retenu)`;
+        item.decision='AP';
+      } else {
+        item.explication = `Doublon sur N° B — un autre acteur présente un montant plus proche du montant [B] pour ce même N° B`;
+        item.decision='Rejet';
+      }
+      return;
+    }
+
+    // #5b : tous montants [A] vides → chercher 1ère ligne du groupe à 3+ critères
+    let chosenIdx = group.find(gi => (listC[gi].sim?.matchedOn||[]).length >= 3);
+
+    // #5c : sinon, 1ère ligne du groupe tout court
+    if(chosenIdx===undefined) chosenIdx = group[0];
+
+    if(i===chosenIdx){
+      const viaCrit = (item.sim?.matchedOn||[]).length>=3;
+      item.explication = baseExpl + (viaCrit
+        ? ` (doublon sur N° B — montant [B] retenu en l'absence de montant [A], correspondance renforcée ≥3 critères)`
+        : ` (doublon sur N° B — 1ère occurrence retenue par défaut, montants [A] indisponibles)`);
+      item.decision='AP';
+    } else {
+      item.explication = `Doublon sur N° B — une autre ligne a été retenue pour ce même N° B (montants [A] indisponibles)`;
+      item.decision='Rejet';
+    }
+  });
+}
 async function runAnalysis(){
   clearAlert();
   const codifMode=document.querySelector('input[name="codifMode"]:checked')?.value||'reg';
   const cA={nom:document.getElementById('anom').value,cin:document.getElementById('acin').value,mnt:document.getElementById('amnt').value,tel:document.getElementById('atel').value,reg:document.getElementById('areg').value,dist:document.getElementById('adist').value,extra:extraVars.A,codifMode};
-  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,extra:extraVars.B};
+  const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,paiement:document.getElementById('bpaiement').value,extra:extraVars.B};
 
   showProgress(true);
   setProgress(0,'Démarrage de l\'analyse…','');
@@ -885,6 +1008,9 @@ async function runAnalysis(){
     setProgress(pct,'Comparaison A avec B…',`${end} / ${total} entrées traitées`);
     await sleep(0);
   }
+
+  // Appliquer la règle de décision automatique sur C (si colonne Paiement mappée)
+  applyDecisionRules(listC, cA, cB);
 
   setProgress(50,'Construction de la liste E…','');
   await sleep(20);
@@ -1182,13 +1308,36 @@ async function exportExcel(){
   const exHdBsingle=(cB.extra||[]).filter(e=>e.col).map(e=>e.label);
   const exValA=row=>(cA.extra||[]).filter(e=>e.col).map(e=>row[e.col]??'');
   const exValB=row=>(cB.extra||[]).filter(e=>e.col).map(e=>row[e.col]??'');
-  const extraPairsHd=(cA.extra||[]).filter(e=>e.col).map((e,i)=>{const eb=(cB.extra||[])[i];return eb&&eb.col?[`[A] ${e.label}`,`[B] ${eb.label}`]:[`[A] ${e.label}`];}).flat();
-  const extraPairsVal=(rowA,rowB)=>(cA.extra||[]).filter(e=>e.col).map((e,i)=>{const eb=(cB.extra||[])[i];return eb&&eb.col?[rowA[e.col]??'',rowB[eb.col]??'']:[rowA[e.col]??''];}).flat();
+  // Extra pairs: handle asymmetric A/B — iterate over max of both
+  const extA=(cA.extra||[]).filter(e=>e.col);
+  const extB=(cB.extra||[]).filter(e=>e.col);
+  const extMax=Math.max(extA.length, extB.length);
+  const extraPairsHd=Array.from({length:extMax},(_,i)=>{
+    const ea=extA[i], eb=extB[i];
+    const cols=[];
+    if(ea) cols.push(`[A] ${ea.label}`);
+    if(eb) cols.push(`[B] ${eb.label}`);
+    return cols;
+  }).flat();
+  const extraPairsVal=(rowA,rowB)=>Array.from({length:extMax},(_,i)=>{
+    const ea=extA[i], eb=extB[i];
+    const vals=[];
+    if(ea) vals.push(rowA[ea.col]??'');
+    if(eb) vals.push(rowB[eb.col]??'');
+    return vals;
+  }).flat();
+  // Color spec for extra pairs
+  const extraPairsSpec=Array.from({length:extMax},(_,i)=>{
+    const ea=extA[i], eb=extB[i];
+    if(ea&&eb) return ['pairA','pairB'];
+    if(ea) return ['single'];
+    return ['single'];
+  }).flat();
 
   // Feuille C
   {
     const hd=['N° A','N° B',...distHdB,`[A] ${cA.nom}`,`[B] ${cB.nom}`,`[A] ${cA.cin}`,`[B] ${cB.cin}`,`[A] ${cA.mnt}`,`[B] ${cB.mnt}`,`[A] ${cA.tel}`,`[B] ${cB.tel}`,...extraPairsHd,'Score (%)','Critère(s)',`Ecart ${cA.mnt}/${cB.mnt}`,'Explication','Décision du comité'];
-    const sp=['single','single',...distHdB.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta','meta','meta'];
+    const sp=['single','single',...distHdB.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsSpec,'meta','meta','meta','meta','meta'];
     const rws=results.listC.map(i=>{const mA=i.sim?.mntA,mB=i.sim?.mntB;return [regNumA(i.rowA),regNumB(i.rowB),...distValB(i.rowB),i.rowA[cA.nom]??'',i.rowB[cB.nom]??'',i.rowA[cA.cin]??'',i.rowB[cB.cin]??'',i.rowA[cA.mnt]??'',i.rowB[cB.mnt]??'',i.rowA[cA.tel]??'',i.rowB[cB.tel]??'',...extraPairsVal(i.rowA,i.rowB),`${i.sim?.score??''}%`,(i.sim?.matchedOn||[]).join(', '),(mA!=null&&mB!=null)?(mA-mB):'',i.explication,i.decision];});
     addSheet('C — A∩B (correspondances)',hd,rws,sp);
   }
@@ -1199,7 +1348,7 @@ async function exportExcel(){
   // Feuille F
   {
     const hd=['N° A','N° B',...distHdA,`[D] ${cA.nom}`,`[E] ${cB.nom}`,`[D] ${cA.cin}`,`[E] ${cB.cin}`,`[D] ${cA.mnt}`,`[E] ${cB.mnt}`,`[D] ${cA.tel}`,`[E] ${cB.tel}`,...extraPairsHd,'Score global (%)','Explication','Décision du comité'];
-    const sp=['single','single',...distHdA.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsHd.map((_,i)=>i%2===0?'pairA':'pairB'),'meta','meta','meta'];
+    const sp=['single','single',...distHdA.map(()=>'single'),'pairA','pairB','pairA','pairB','pairA','pairB','pairA','pairB',...extraPairsSpec,'meta','meta','meta'];
     const rws=results.listF.map(i=>[regNumA(i.rowD),regNumB(i.rowE),...distValA(i.rowD),i.rowD[cA.nom]??'',i.rowE[cB.nom]??'',i.rowD[cA.cin]??'',i.rowE[cB.cin]??'',i.rowD[cA.mnt]??'',i.rowE[cB.mnt]??'',i.rowD[cA.tel]??'',i.rowE[cB.tel]??'',...extraPairsVal(i.rowD,i.rowE),`${i.score}%`,i.explication,i.decision]);
     addSheet('F — Correspondances floues D↔E',hd,rws,sp);
   }
