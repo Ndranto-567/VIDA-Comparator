@@ -187,6 +187,10 @@ textarea{resize:vertical;min-height:56px}
 .consol-stat{text-align:center}
 .consol-stat-val{font-family:'DM Serif Display',serif;font-size:24px;color:var(--teal)}
 .consol-stat-lbl{font-size:10px;color:var(--ink-muted);font-weight:500}
+.consol-progress{height:6px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0}
+.consol-progress-bar{height:100%;background:var(--teal);border-radius:4px;transition:width .3s}
+.consol-file-item{background:white;border:1px solid var(--border);border-radius:8px;padding:10px 14px;position:relative}
+.saved-group-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:8px;font-size:12px;gap:8px}
 
 @media(max-width:800px){
   .upload-grid{grid-template-columns:1fr}.vs-divider{display:none}
@@ -314,6 +318,12 @@ textarea{resize:vertical;min-height:56px}
       <div id="consolMappingPairs"></div>
     </div>
 
+    <!-- Groupes sauvegardés -->
+    <div id="consolSavedGroups" style="display:none;padding:0 28px 4px">
+      <div style="font-size:11px;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Groupes sauvegardés</div>
+      <div id="consolSavedGroupsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+    </div>
+
     <!-- Stats + action -->
     <div class="consol-stats" id="consolStatsBar" style="display:none">
       <div class="consol-stat"><div class="consol-stat-val" id="cStatTarget">0</div><div class="consol-stat-lbl">Lignes cible</div></div>
@@ -323,6 +333,11 @@ textarea{resize:vertical;min-height:56px}
     </div>
 
     <div class="card-footer">
+      <div id="consolRunProgress" style="display:none;flex:1">
+        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:4px" id="consolRunProgressLabel">Consolidation en cours…</div>
+        <div class="consol-progress"><div class="consol-progress-bar" id="consolRunProgressBar" style="width:0%"></div></div>
+      </div>
+      <button class="btn-ghost" id="btnConsolSaveGroup" style="display:none" onclick="saveConsolGroup()">💾 Sauvegarder la sélection</button>
       <button class="btn-ghost" id="btnConsolPreview" style="display:none" onclick="previewConsol()">👁 Aperçu</button>
       <button class="btn-primary" id="btnConsolRun" style="display:none" onclick="runConsol()">➕ Consolider tout</button>
     </div>
@@ -1457,6 +1472,11 @@ function applyConsolTargetSheet(sheetName){
   document.getElementById('consolTargetStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}" · en-tête ligne ${headerRow}`;
   updateConsolStats();
   tryShowMapping();
+  if(sourceQueue.length) {
+    document.getElementById('btnConsolRun').style.display='block';
+    document.getElementById('btnConsolPreview').style.display='block';
+    document.getElementById('btnConsolSaveGroup').style.display='block';
+  }
 }
 function switchConsolTargetSheet(sheetName){
   if(!consolTargetWb) return;
@@ -1491,6 +1511,8 @@ function renderSourceQueue(){
     document.getElementById('consolSourceBadge').style.display='none';
     document.getElementById('btnConsolRun').style.display='none';
     document.getElementById('btnConsolPreview').style.display='none';
+    document.getElementById('btnConsolSaveGroup').style.display='none';
+    document.getElementById('consolMappingSection').style.display='none';
     return;
   }
   document.getElementById('consolSourcePrompt').style.display='none';
@@ -1500,12 +1522,17 @@ function renderSourceQueue(){
   list.innerHTML='';
   sourceQueue.forEach((item,qi)=>{
     const div=document.createElement('div');
-    div.style.cssText='background:white;border:1px solid var(--border);border-radius:8px;padding:10px 14px';
+    div.className='consol-file-item';
+    // Line progress bar (hidden until runConsol)
     div.innerHTML=`
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:13px;font-weight:600">${escH(item.file.name)}</span>
         <button onclick="removeSourceQueueItem(${qi})" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:16px;padding:0 4px">✕</button>
       </div>
+      <div class="consol-progress" id="consolFileProgress_${qi}" style="display:none">
+        <div class="consol-progress-bar" id="consolFileBar_${qi}" style="width:0%"></div>
+      </div>
+      <div id="consolFileDone_${qi}" style="display:none;font-size:11px;color:var(--green)">✓ Consolidé</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         ${item.sheetNames.length>1?`
         <div>
@@ -1523,10 +1550,12 @@ function renderSourceQueue(){
       </div>`;
     list.appendChild(div);
   });
-  if(consolTarget) {
+  if(consolTarget){
     document.getElementById('btnConsolRun').style.display='block';
     document.getElementById('btnConsolPreview').style.display='block';
+    document.getElementById('btnConsolSaveGroup').style.display='block';
   }
+  tryShowMapping();
 }
 function removeSourceQueueItem(qi){
   sourceQueue.splice(qi,1);
@@ -1674,8 +1703,8 @@ function updateConsolStats(){
   document.getElementById('cStatRounds').textContent=consolRounds;
 }
 
-// ── Run consolidation (all queued sources) ───────────────
-function runConsol(){
+// ── Run consolidation (all queued sources) — avec progression ──
+async function runConsol(){
   if(!consolTarget){showAlert('Chargez la feuille cible.');return;}
   if(!sourceQueue.length){showAlert('Ajoutez au moins un fichier source.');return;}
   const mapping=getMapping();
@@ -1687,10 +1716,29 @@ function runConsol(){
     consolData.forEach(r=>{if(r['__source']===undefined) r['__source']=consolTarget.name;});
   }
 
-  const histEl=document.getElementById('consolHistoryList');
-  let totalAdded=0;
+  // Show global progress
+  const globalProg = document.getElementById('consolRunProgress');
+  const globalBar  = document.getElementById('consolRunProgressBar');
+  const globalLbl  = document.getElementById('consolRunProgressLabel');
+  globalProg.style.display='block';
+  document.getElementById('btnConsolRun').disabled=true;
 
-  sourceQueue.forEach(qItem=>{
+  const histEl=document.getElementById('consolHistoryList');
+  const total=sourceQueue.length;
+
+  for(let qi=0; qi<total; qi++){
+    const qItem=sourceQueue[qi];
+    globalLbl.textContent=`Fichier ${qi+1}/${total} : ${qItem.file.name}`;
+    globalBar.style.width=`${Math.round(qi/total*100)}%`;
+
+    // Show per-file progress
+    const fileBar=document.getElementById(`consolFileBar_${qi}`);
+    const fileProg=document.getElementById(`consolFileProgress_${qi}`);
+    const fileDone=document.getElementById(`consolFileDone_${qi}`);
+    if(fileProg) fileProg.style.display='block';
+    if(fileBar) fileBar.style.width='50%';
+    await sleep(10);
+
     const {data}=readSheetFromWorkbook(qItem.wb, qItem.selectedSheet, qItem.headerRow);
     const newRows=data.map(srcRow=>{
       const newRow={}, newStyles={};
@@ -1704,26 +1752,73 @@ function runConsol(){
       newRow['__styles']=newStyles;
       return newRow;
     });
+
     consolData=[...consolData,...newRows];
     consolRounds++;
-    totalAdded+=newRows.length;
     consolHistory.push({name:qItem.file.name, rows:newRows.length});
-    const item=document.createElement('div');
-    item.className='consol-history-item';
-    item.innerHTML=`<span>${escH(qItem.file.name)}</span><span class="consol-badge">+${newRows.length} lignes</span>`;
-    histEl.appendChild(item);
-  });
 
-  document.getElementById('consolHistory').style.display='block';
+    const histItem=document.createElement('div');
+    histItem.className='consol-history-item';
+    histItem.innerHTML=`<span>${escH(qItem.file.name)}</span><span class="consol-badge">+${newRows.length} lignes</span>`;
+    histEl.appendChild(histItem);
+    document.getElementById('consolHistory').style.display='block';
+
+    if(fileProg) fileProg.style.display='none';
+    if(fileDone) fileDone.style.display='block';
+    if(fileBar)  fileBar.style.width='100%';
+    await sleep(10);
+  }
+
+  globalBar.style.width='100%';
+  globalLbl.textContent=`✓ ${total} fichier(s) consolidé(s) — ${consolData.length} lignes au total`;
   document.getElementById('consolTargetStats').textContent=
     `${consolTarget.data.length} lignes initiales · ${consolRounds} round(s) · ${consolData.length} lignes total`;
   document.getElementById('btnExportConsol').style.display='block';
+  document.getElementById('btnConsolRun').disabled=false;
 
-  // Clear queue after consolidation
+  // Clear queue
   sourceQueue=[];
   renderSourceQueue();
+  globalProg.style.display='none';
   updateConsolStats();
   previewConsol();
+}
+
+// ── Sauvegarde d'un groupe de sélection ──────────────────
+let savedGroups=[]; // [{name, files:[{name,sheet,headerRow}]}]
+
+function saveConsolGroup(){
+  if(!sourceQueue.length){showAlert('Aucun fichier dans la file.');return;}
+  const name=prompt('Nom du groupe de fichiers à sauvegarder:');
+  if(!name) return;
+  savedGroups.push({
+    name,
+    files: sourceQueue.map(q=>({fileName:q.file.name, sheet:q.selectedSheet, headerRow:q.headerRow}))
+  });
+  renderSavedGroups();
+  showAlert(`Groupe "${name}" sauvegardé (${sourceQueue.length} fichier(s)).`);
+}
+function renderSavedGroups(){
+  const list=document.getElementById('consolSavedGroupsList');
+  const section=document.getElementById('consolSavedGroups');
+  if(!savedGroups.length){ section.style.display='none'; return; }
+  section.style.display='block';
+  list.innerHTML=savedGroups.map((g,gi)=>`
+    <div class="saved-group-item">
+      <span>📁 <strong>${escH(g.name)}</strong> — ${g.files.length} fichier(s)</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn-ghost" style="font-size:11px;padding:3px 10px" onclick="showSavedGroupDetail(${gi})">Voir</button>
+        <button class="btn-ghost" style="font-size:11px;padding:3px 10px;color:var(--red)" onclick="deleteSavedGroup(${gi})">✕</button>
+      </div>
+    </div>`).join('');
+}
+function showSavedGroupDetail(gi){
+  const g=savedGroups[gi];
+  alert(`Groupe "${g.name}":\n${g.files.map((f,i)=>`${i+1}. ${f.fileName} (feuille: ${f.sheet}, en-tête: ligne ${f.headerRow})`).join('\n')}`);
+}
+function deleteSavedGroup(gi){
+  savedGroups.splice(gi,1);
+  renderSavedGroups();
 }
 
 // ── Preview ──────────────────────────────────────────────
