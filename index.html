@@ -282,33 +282,25 @@ textarea{resize:vertical;min-height:56px}
         </div>
       </div>
 
-      <!-- Feuille source -->
+      <!-- Feuille source (multi-fichiers) -->
       <div class="consol-source">
         <div class="consol-label" style="color:var(--gold)">
-          ➕ Feuille source (à ajouter)
-          <span id="consolSourceBadge" style="display:none" class="consol-badge" style="background:var(--gold-pale);color:var(--gold)">✓ Prête</span>
+          ➕ Fichiers sources (à ajouter)
+          <span id="consolSourceBadge" style="display:none" class="consol-badge">✓ Prêts</span>
         </div>
         <div id="consolSourcePrompt">
-          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px">Chargez un fichier source. Mappez ses colonnes sur la cible, puis consolidez.</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px">Sélectionnez un ou plusieurs fichiers sources — ils s'empileront tous dans la cible.</div>
           <label class="btn-upload" style="background:var(--gold)">
-            Choisir un fichier source
-            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadConsolSource(this.files[0])">
+            Choisir fichier(s) source
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" multiple onchange="loadConsolSources(this.files)">
           </label>
         </div>
-        <div id="consolSourceInfo" style="display:none">
-          <div style="font-size:13px;font-weight:600" id="consolSourceName"></div>
-          <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="consolSourceStats"></div>
-          <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
-            <div id="consolSourceSheetSel" style="display:none">
-              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille</label>
-              <select id="consolSourceSheetPicker" style="font-size:12px" onchange="switchConsolSourceSheet(this.value)"></select>
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Ligne d'en-tête</label>
-              <input type="number" id="consolSourceHeaderRow" value="1" min="1" max="50" style="font-size:12px;width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px" onchange="reloadConsolSource()">
-            </div>
-          </div>
-          <button class="btn-ghost" style="font-size:11px;margin-top:8px;padding:4px 10px" onclick="resetConsolSource()">✕ Changer la source</button>
+        <div id="consolSourceQueue" style="display:none">
+          <div id="consolSourceQueueList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"></div>
+          <label class="btn-upload" style="background:var(--gold);font-size:12px;padding:6px 14px">
+            + Ajouter d'autres fichiers
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" multiple onchange="addConsolSources(this.files)">
+          </label>
         </div>
       </div>
     </div>
@@ -332,7 +324,7 @@ textarea{resize:vertical;min-height:56px}
 
     <div class="card-footer">
       <button class="btn-ghost" id="btnConsolPreview" style="display:none" onclick="previewConsol()">👁 Aperçu</button>
-      <button class="btn-primary" id="btnConsolRun" style="display:none" onclick="runConsol()">➕ Consolider</button>
+      <button class="btn-primary" id="btnConsolRun" style="display:none" onclick="runConsol()">➕ Consolider tout</button>
     </div>
   </div>
 
@@ -1420,11 +1412,12 @@ function switchModule(mod){
 // CONSOLIDATION STATE
 // ════════════════════════════════════════════════════════
 let consolTarget   = null;   // {data:[], headers:[]}
-let consolSource   = null;   // {data:[], headers:[]}
+let consolSource   = null;   // kept for compatibility
 let consolTargetWb = null;   // workbook complet (pour changer de feuille)
 let consolSourceWb = null;
 let consolTargetFile = null; // File object original
 let consolSourceFile = null;
+let sourceQueue    = [];     // [{file, wb, sheetNames, selectedSheet, headerRow}]
 let consolData     = [];     // accumulated rows
 let consolHeaders  = [];     // final column list
 let consolRounds   = 0;
@@ -1475,41 +1468,69 @@ function reloadConsolTarget(){
   if(sheetName) applyConsolTargetSheet(sheetName);
 }
 
-async function loadConsolSource(file){
-  if(!file) return;
-  await readXlsxWorkbook(file, (wb, sheetNames)=>{
-    consolSourceWb = wb;
-    consolSourceFile = file;
-    const firstSheet = sheetNames[0];
-    applyConsolSourceSheet(firstSheet);
+// ── File d'attente des sources (multi-fichiers) ─────────────────────────────
 
-    const picker = document.getElementById('consolSourceSheetPicker');
-    picker.innerHTML = sheetNames.map(s=>`<option value="${escH(s)}">${escH(s)}</option>`).join('');
-    picker.value = firstSheet;
-    document.getElementById('consolSourceSheetSel').style.display = sheetNames.length>1 ? 'block' : 'none';
-
-    document.getElementById('consolSourcePrompt').style.display='none';
-    document.getElementById('consolSourceInfo').style.display='block';
-    document.getElementById('consolSourceBadge').style.display='inline';
-    document.getElementById('consolSourceName').textContent=file.name;
+async function loadConsolSources(files){
+  if(!files || !files.length) return;
+  await addConsolSources(files);
+}
+async function addConsolSources(files){
+  if(!files || !files.length) return;
+  for(const file of Array.from(files)){
+    await readXlsxWorkbook(file, (wb, sheetNames)=>{
+      sourceQueue.push({file, wb, sheetNames, selectedSheet:sheetNames[0], headerRow:1});
+    });
+  }
+  renderSourceQueue();
+}
+function renderSourceQueue(){
+  const list = document.getElementById('consolSourceQueueList');
+  if(!sourceQueue.length){
+    document.getElementById('consolSourcePrompt').style.display='block';
+    document.getElementById('consolSourceQueue').style.display='none';
+    document.getElementById('consolSourceBadge').style.display='none';
+    document.getElementById('btnConsolRun').style.display='none';
+    document.getElementById('btnConsolPreview').style.display='none';
+    return;
+  }
+  document.getElementById('consolSourcePrompt').style.display='none';
+  document.getElementById('consolSourceQueue').style.display='block';
+  document.getElementById('consolSourceBadge').style.display='inline';
+  document.getElementById('consolSourceBadge').textContent=`✓ ${sourceQueue.length} fichier(s)`;
+  list.innerHTML='';
+  sourceQueue.forEach((item,qi)=>{
+    const div=document.createElement('div');
+    div.style.cssText='background:white;border:1px solid var(--border);border-radius:8px;padding:10px 14px';
+    div.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:600">${escH(item.file.name)}</span>
+        <button onclick="removeSourceQueueItem(${qi})" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:16px;padding:0 4px">✕</button>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${item.sheetNames.length>1?`
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:3px">Feuille</label>
+          <select style="font-size:12px" onchange="sourceQueue[${qi}].selectedSheet=this.value">
+            ${item.sheetNames.map(s=>`<option value="${escH(s)}" ${s===item.selectedSheet?'selected':''}>${escH(s)}</option>`).join('')}
+          </select>
+        </div>`:''}
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:3px">Ligne d'en-tête</label>
+          <input type="number" value="${item.headerRow}" min="1" max="50"
+            style="font-size:12px;width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px"
+            onchange="sourceQueue[${qi}].headerRow=parseInt(this.value)||1">
+        </div>
+      </div>`;
+    list.appendChild(div);
   });
+  if(consolTarget) {
+    document.getElementById('btnConsolRun').style.display='block';
+    document.getElementById('btnConsolPreview').style.display='block';
+  }
 }
-function applyConsolSourceSheet(sheetName){
-  const headerRow = parseInt(document.getElementById('consolSourceHeaderRow')?.value||'1')||1;
-  const {data, headers} = readSheetFromWorkbook(consolSourceWb, sheetName, headerRow);
-  consolSource = {data, headers, name:consolSourceFile.name, sheet:sheetName};
-  document.getElementById('consolSourceStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}" · en-tête ligne ${headerRow}`;
-  updateConsolStats();
-  tryShowMapping();
-}
-function switchConsolSourceSheet(sheetName){
-  if(!consolSourceWb) return;
-  applyConsolSourceSheet(sheetName);
-}
-function reloadConsolSource(){
-  if(!consolSourceWb) return;
-  const sheetName = document.getElementById('consolSourceSheetPicker')?.value || consolSourceWb.worksheets[0]?.name;
-  if(sheetName) applyConsolSourceSheet(sheetName);
+function removeSourceQueueItem(qi){
+  sourceQueue.splice(qi,1);
+  renderSourceQueue();
 }
 
 function resetConsolTarget(){
@@ -1528,15 +1549,8 @@ function resetConsolTarget(){
   document.getElementById('btnExportConsol').style.display='none';
 }
 function resetConsolSource(){
-  consolSource=null; consolSourceWb=null; consolSourceFile=null;
-  document.getElementById('consolSourcePrompt').style.display='block';
-  document.getElementById('consolSourceInfo').style.display='none';
-  document.getElementById('consolSourceBadge').style.display='none';
-  document.getElementById('consolSourceSheetSel').style.display='none';
-  document.getElementById('consolSourceHeaderRow').value='1';
-  document.getElementById('consolMappingSection').style.display='none';
-  document.getElementById('btnConsolRun').style.display='none';
-  document.getElementById('btnConsolPreview').style.display='none';
+  sourceQueue=[];
+  renderSourceQueue();
 }
 
 // ── Generic XLSX reader (ExcelJS) — garde le classeur en mémoire, lit aussi
@@ -1604,17 +1618,18 @@ function readSheetFromWorkbook(wb, sheetName, headerRow=1){
 
 // ── Build mapping UI ─────────────────────────────────────
 function tryShowMapping(){
-  if(!consolTarget||!consolSource) return;
+  if(!consolTarget || !sourceQueue.length) return;
+  // Build union of all source headers across all queued files
+  const allSrcHeaders=[...new Set(sourceQueue.flatMap(item=>{
+    const {headers}=readSheetFromWorkbook(item.wb, item.selectedSheet, item.headerRow);
+    return headers;
+  }))];
   const section=document.getElementById('consolMappingSection');
   const pairs=document.getElementById('consolMappingPairs');
   section.style.display='block';
   pairs.innerHTML='';
-
-  // Auto-match columns by name similarity
-  consolSource.headers.forEach((srcCol,i)=>{
-    const matchIdx = consolHeaders.findIndex(tc=>
-      tc.toLowerCase().trim()===srcCol.toLowerCase().trim()
-    );
+  allSrcHeaders.forEach((srcCol,i)=>{
+    const matchIdx=consolHeaders.findIndex(tc=>tc.toLowerCase().trim()===srcCol.toLowerCase().trim());
     const div=document.createElement('div');
     div.className='mapping-pair';
     div.innerHTML=`
@@ -1627,6 +1642,8 @@ function tryShowMapping(){
       </select>`;
     pairs.appendChild(div);
   });
+  // Store headers for getMapping
+  pairs.dataset.srcHeaders=JSON.stringify(allSrcHeaders);
   document.getElementById('consolStatsBar').style.display='flex';
   document.getElementById('btnConsolRun').style.display='block';
   document.getElementById('btnConsolPreview').style.display='block';
@@ -1636,7 +1653,9 @@ function escH(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
 // ── Get mapping ──────────────────────────────────────────
 function getMapping(){
-  return consolSource.headers.map((srcCol,i)=>{
+  const pairs=document.getElementById('consolMappingPairs');
+  const srcHeaders=JSON.parse(pairs.dataset.srcHeaders||'[]');
+  return srcHeaders.map((srcCol,i)=>{
     const sel=document.getElementById('cmap_'+i);
     return {src:srcCol, tgt:sel?sel.value:''};
   }).filter(m=>m.tgt);
@@ -1645,36 +1664,22 @@ function getMapping(){
 // ── Stats ────────────────────────────────────────────────
 function updateConsolStats(){
   const tRows=consolData.length;
-  const sRows=consolSource?consolSource.data.length:0;
+  const sRows=sourceQueue.reduce((acc,item)=>{
+    const {data}=readSheetFromWorkbook(item.wb, item.selectedSheet, item.headerRow);
+    return acc+data.length;
+  },0);
   document.getElementById('cStatTarget').textContent=tRows;
   document.getElementById('cStatSource').textContent=sRows;
   document.getElementById('cStatTotal').textContent=tRows+sRows;
   document.getElementById('cStatRounds').textContent=consolRounds;
 }
 
-// ── Run consolidation ────────────────────────────────────
+// ── Run consolidation (all queued sources) ───────────────
 function runConsol(){
-  if(!consolTarget||!consolSource){showAlert('Chargez les deux fichiers.');return;}
+  if(!consolTarget){showAlert('Chargez la feuille cible.');return;}
+  if(!sourceQueue.length){showAlert('Ajoutez au moins un fichier source.');return;}
   const mapping=getMapping();
   if(!mapping.length){showAlert('Mappez au moins une colonne.');return;}
-
-  // Build new rows from source using mapping — on reporte aussi le style de cellule
-  // de la colonne SOURCE mappée vers la colonne CIBLE correspondante
-  const newRows=consolSource.data.map(srcRow=>{
-    const newRow={};
-    const newStyles={};
-    // Init with empty values for all target columns
-    consolHeaders.forEach(h=>{ if(h!=='__styles') newRow[h]=''; });
-    // Fill mapped columns + propagate style
-    mapping.forEach(({src,tgt})=>{
-      newRow[tgt]=srcRow[src]??'';
-      const srcStyle = srcRow['__styles']?.[src];
-      if(srcStyle) newStyles[tgt]=srcStyle;
-    });
-    newRow['__source']=consolSource.name;
-    newRow['__styles']=newStyles;
-    return newRow;
-  });
 
   // Ensure __source column exists
   if(!consolHeaders.includes('__source')){
@@ -1682,25 +1687,41 @@ function runConsol(){
     consolData.forEach(r=>{if(r['__source']===undefined) r['__source']=consolTarget.name;});
   }
 
-  consolData=[...consolData,...newRows];
-  consolRounds++;
-
-  // Log history
-  consolHistory.push({name:consolSource.name, rows:consolSource.data.length});
   const histEl=document.getElementById('consolHistoryList');
-  const item=document.createElement('div');
-  item.className='consol-history-item';
-  item.innerHTML=`<span>${escH(consolSource.name)}</span><span class="consol-badge">+${consolSource.data.length} lignes</span>`;
-  histEl.appendChild(item);
+  let totalAdded=0;
+
+  sourceQueue.forEach(qItem=>{
+    const {data}=readSheetFromWorkbook(qItem.wb, qItem.selectedSheet, qItem.headerRow);
+    const newRows=data.map(srcRow=>{
+      const newRow={}, newStyles={};
+      consolHeaders.forEach(h=>{ if(h!=='__styles') newRow[h]=''; });
+      mapping.forEach(({src,tgt})=>{
+        newRow[tgt]=srcRow[src]??'';
+        const srcStyle=srcRow['__styles']?.[src];
+        if(srcStyle) newStyles[tgt]=srcStyle;
+      });
+      newRow['__source']=qItem.file.name;
+      newRow['__styles']=newStyles;
+      return newRow;
+    });
+    consolData=[...consolData,...newRows];
+    consolRounds++;
+    totalAdded+=newRows.length;
+    consolHistory.push({name:qItem.file.name, rows:newRows.length});
+    const item=document.createElement('div');
+    item.className='consol-history-item';
+    item.innerHTML=`<span>${escH(qItem.file.name)}</span><span class="consol-badge">+${newRows.length} lignes</span>`;
+    histEl.appendChild(item);
+  });
+
   document.getElementById('consolHistory').style.display='block';
   document.getElementById('consolTargetStats').textContent=
-    `${consolTarget.data.length} lignes initiales · ${consolRounds} consolidation(s) · ${consolData.length} lignes total`;
-
-  // Show export button
+    `${consolTarget.data.length} lignes initiales · ${consolRounds} round(s) · ${consolData.length} lignes total`;
   document.getElementById('btnExportConsol').style.display='block';
 
-  // Reset source for next round
-  resetConsolSource();
+  // Clear queue after consolidation
+  sourceQueue=[];
+  renderSourceQueue();
   updateConsolStats();
   previewConsol();
 }
