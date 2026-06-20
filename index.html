@@ -263,9 +263,15 @@ textarea{resize:vertical;min-height:56px}
         <div id="consolTargetInfo" style="display:none">
           <div style="font-size:13px;font-weight:600" id="consolTargetName"></div>
           <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="consolTargetStats"></div>
-          <div id="consolTargetSheetSel" style="display:none;margin-top:8px">
-            <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille à utiliser</label>
-            <select id="consolTargetSheetPicker" style="font-size:12px;width:100%" onchange="switchConsolTargetSheet(this.value)"></select>
+          <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+            <div id="consolTargetSheetSel" style="display:none">
+              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille</label>
+              <select id="consolTargetSheetPicker" style="font-size:12px" onchange="switchConsolTargetSheet(this.value)"></select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Ligne d'en-tête</label>
+              <input type="number" id="consolTargetHeaderRow" value="1" min="1" max="50" style="font-size:12px;width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px" onchange="reloadConsolTarget()">
+            </div>
           </div>
           <button class="btn-ghost" style="font-size:11px;margin-top:8px;padding:4px 10px" onclick="resetConsolTarget()">✕ Changer la cible</button>
         </div>
@@ -292,9 +298,15 @@ textarea{resize:vertical;min-height:56px}
         <div id="consolSourceInfo" style="display:none">
           <div style="font-size:13px;font-weight:600" id="consolSourceName"></div>
           <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="consolSourceStats"></div>
-          <div id="consolSourceSheetSel" style="display:none;margin-top:8px">
-            <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille à utiliser</label>
-            <select id="consolSourceSheetPicker" style="font-size:12px;width:100%" onchange="switchConsolSourceSheet(this.value)"></select>
+          <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+            <div id="consolSourceSheetSel" style="display:none">
+              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille</label>
+              <select id="consolSourceSheetPicker" style="font-size:12px" onchange="switchConsolSourceSheet(this.value)"></select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Ligne d'en-tête</label>
+              <input type="number" id="consolSourceHeaderRow" value="1" min="1" max="50" style="font-size:12px;width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px" onchange="reloadConsolSource()">
+            </div>
           </div>
           <button class="btn-ghost" style="font-size:11px;margin-top:8px;padding:4px 10px" onclick="resetConsolSource()">✕ Changer la source</button>
         </div>
@@ -1442,19 +1454,25 @@ async function loadConsolTarget(file){
   });
 }
 function applyConsolTargetSheet(sheetName){
-  const {data, headers} = readSheetFromWorkbook(consolTargetWb, sheetName);
+  const headerRow = parseInt(document.getElementById('consolTargetHeaderRow')?.value||'1')||1;
+  const {data, headers} = readSheetFromWorkbook(consolTargetWb, sheetName, headerRow);
   consolTarget  = {data, headers, name:consolTargetFile.name, sheet:sheetName};
   consolData    = [...data];
   consolHeaders = [...headers];
   consolRounds  = 0;
   consolHistory = [];
-  document.getElementById('consolTargetStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}"`;
+  document.getElementById('consolTargetStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}" · en-tête ligne ${headerRow}`;
   updateConsolStats();
   tryShowMapping();
 }
 function switchConsolTargetSheet(sheetName){
   if(!consolTargetWb) return;
   applyConsolTargetSheet(sheetName);
+}
+function reloadConsolTarget(){
+  if(!consolTargetWb) return;
+  const sheetName = document.getElementById('consolTargetSheetPicker')?.value || consolTargetWb.worksheets[0]?.name;
+  if(sheetName) applyConsolTargetSheet(sheetName);
 }
 
 async function loadConsolSource(file){
@@ -1477,15 +1495,21 @@ async function loadConsolSource(file){
   });
 }
 function applyConsolSourceSheet(sheetName){
-  const {data, headers} = readSheetFromWorkbook(consolSourceWb, sheetName);
+  const headerRow = parseInt(document.getElementById('consolSourceHeaderRow')?.value||'1')||1;
+  const {data, headers} = readSheetFromWorkbook(consolSourceWb, sheetName, headerRow);
   consolSource = {data, headers, name:consolSourceFile.name, sheet:sheetName};
-  document.getElementById('consolSourceStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}"`;
+  document.getElementById('consolSourceStats').textContent=`${data.length} lignes · ${headers.length} colonnes · feuille "${sheetName}" · en-tête ligne ${headerRow}`;
   updateConsolStats();
   tryShowMapping();
 }
 function switchConsolSourceSheet(sheetName){
   if(!consolSourceWb) return;
   applyConsolSourceSheet(sheetName);
+}
+function reloadConsolSource(){
+  if(!consolSourceWb) return;
+  const sheetName = document.getElementById('consolSourceSheetPicker')?.value || consolSourceWb.worksheets[0]?.name;
+  if(sheetName) applyConsolSourceSheet(sheetName);
 }
 
 function resetConsolTarget(){
@@ -1495,6 +1519,7 @@ function resetConsolTarget(){
   document.getElementById('consolTargetInfo').style.display='none';
   document.getElementById('consolTargetBadge').style.display='none';
   document.getElementById('consolTargetSheetSel').style.display='none';
+  document.getElementById('consolTargetHeaderRow').value='1';
   document.getElementById('consolMappingSection').style.display='none';
   document.getElementById('consolStatsBar').style.display='none';
   document.getElementById('btnConsolRun').style.display='none';
@@ -1508,6 +1533,7 @@ function resetConsolSource(){
   document.getElementById('consolSourceInfo').style.display='none';
   document.getElementById('consolSourceBadge').style.display='none';
   document.getElementById('consolSourceSheetSel').style.display='none';
+  document.getElementById('consolSourceHeaderRow').value='1';
   document.getElementById('consolMappingSection').style.display='none';
   document.getElementById('btnConsolRun').style.display='none';
   document.getElementById('btnConsolPreview').style.display='none';
@@ -1547,15 +1573,15 @@ function cloneCellStyle(cell){
     alignment: cell.alignment ? JSON.parse(JSON.stringify(cell.alignment)) : undefined,
   };
 }
-function readSheetFromWorkbook(wb, sheetName){
+function readSheetFromWorkbook(wb, sheetName, headerRow=1){
   const ws = wb.getWorksheet(sheetName);
-  if(!ws || ws.rowCount<2) return {data:[], headers:[]};
-  const headerRow = ws.getRow(1);
+  if(!ws || ws.rowCount<headerRow) return {data:[], headers:[]};
+  const hRow = ws.getRow(headerRow);
   const headers = [];
-  headerRow.eachCell({includeEmpty:true},(cell,colNum)=>{ headers[colNum-1] = String(cell.value??'').trim() || `Colonne ${colNum}`; });
+  hRow.eachCell({includeEmpty:true},(cell,colNum)=>{ headers[colNum-1] = String(cell.value??'').trim() || `Colonne ${colNum}`; });
 
   const data = [];
-  for(let r=2; r<=ws.rowCount; r++){
+  for(let r=headerRow+1; r<=ws.rowCount; r++){
     const row = ws.getRow(r);
     if(row.cellCount===0) continue;
     const obj = {};
