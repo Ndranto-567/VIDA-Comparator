@@ -1140,7 +1140,8 @@ self.onmessage = function(e){
     const rB=dataB[ib]; let indexed=false;
     if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
     if(cB.tel){ const k=normPhone(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
-    if(cB.nom){ const tris=trigrams(normKey(rB[cB.nom])); if(tris.length){ tris.forEach(t=>{ if(!idxTri.has(t)) idxTri.set(t,new Set()); idxTri.get(t).add(ib); }); indexed=true; } }
+    // Nom non indexé par trigrammes (trop fréquents en malgache → explosion des candidats)
+    // Le nom est scoré via Jaro-Winkler sur les candidats CIN/Tél uniquement
     if(!indexed) noKeyB.add(ib);
     if(ib%5000===0) self.postMessage({type:'progress',phase:'index',done:ib,total:dataB.length});
   }
@@ -1153,12 +1154,8 @@ self.onmessage = function(e){
     const candidates=new Set(noKeyB);
     if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
     if(cA.tel&&cB.tel){ const k=normPhone(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-    if(cA.nom&&cB.nom){
-      const tris=trigrams(normKey(rA[cA.nom]));
-      const freq=new Map();
-      tris.forEach(t=>{ if(idxTri.has(t)) idxTri.get(t).forEach(ib=>freq.set(ib,(freq.get(ib)||0)+1)); });
-      freq.forEach((cnt,ib)=>{ if(cnt>=2) candidates.add(ib); });
-    }
+    // Nom : pas de candidats par trigrammes (buckets trop grands sur noms malgaches)
+    // Jaro-Winkler appliqué sur les candidats CIN/Tél seulement
     let bestScore=0, bestIdxB=-1, bestSim=null;
     for(const ib of candidates){
       const sim=similarity(rA,dataB[ib],cA,cB);
@@ -1201,7 +1198,6 @@ async function runAnalysisFallback(dataA, dataB, cA, cB){
     const rB=dataB[ib]; let indexed=false;
     if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
     if(cB.tel){ const k=normPhone2(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
-    if(cB.nom){ const tris=trigrams2(normKey(rB[cB.nom])); if(tris.length){ tris.forEach(t=>{ if(!idxTri.has(t)) idxTri.set(t,new Set()); idxTri.get(t).add(ib); }); indexed=true; } }
     if(!indexed) noKeyB.add(ib);
     if(ib%2000===0 && ib>0){
       setProgress(2+Math.round(ib/dataB.length*8),'Index sur B…',`${ib} / ${dataB.length} lignes`);
@@ -1219,12 +1215,7 @@ async function runAnalysisFallback(dataA, dataB, cA, cB){
       const candidates=new Set(noKeyB);
       if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
       if(cA.tel&&cB.tel){ const k=normPhone2(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-      if(cA.nom&&cB.nom){
-        const tris=trigrams2(normKey(rA[cA.nom]));
-        const freq=new Map();
-        tris.forEach(t=>{ if(idxTri.has(t)) idxTri.get(t).forEach(ib=>freq.set(ib,(freq.get(ib)||0)+1)); });
-        freq.forEach((cnt,ib)=>{ if(cnt>=2) candidates.add(ib); });
-      }
+      // Nom : Jaro-Winkler sur candidats CIN/Tél uniquement (trigrammes désactivés)
       let bestScore=0, bestIdxB=-1, bestSim=null;
       for(const ib of candidates){
         const sim=similarity(rA,dataB[ib],cA,cB);
@@ -1249,6 +1240,18 @@ async function runAnalysis(){
   const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,paiement:document.getElementById('bpaiement').value,extra:extraVars.B};
 
   showProgress(true);
+  setProgress(0,'Optimisation mémoire…','Réduction des données pour analyse');
+  await sleep(20);
+
+  // Colonnes utiles pour comparaison (slim arrays → économie mémoire ~70%)
+  const colsNeededA = new Set([cA.nom,cA.cin,cA.mnt,cA.tel,cA.reg,cA.dist,cA.entite,
+    ...(cA.extra||[]).map(e=>e.col),'__numA'].filter(Boolean));
+  const colsNeededB = new Set([cB.nom,cB.cin,cB.mnt,cB.tel,cB.reg,cB.dist,cB.paiement,
+    ...(cB.extra||[]).map(e=>e.col),'__numB'].filter(Boolean));
+
+  // Créer des versions allégées pour l'analyse (garde les originaux pour l'export)
+  const dataAslim = dataA.map(r=>{ const o={}; colsNeededA.forEach(k=>{ if(k in r) o[k]=r[k]; }); return o; });
+  const dataBslim = dataB.map(r=>{ const o={}; colsNeededB.forEach(k=>{ if(k in r) o[k]=r[k]; }); return o; });
   setProgress(0,'Démarrage de l\'analyse…','');
   await sleep(50);
 
@@ -1288,7 +1291,7 @@ async function runAnalysis(){
         worker.terminate();
         reject(err);
       };
-      worker.postMessage({dataA, dataB, cA, cB});
+      worker.postMessage({dataA:dataAslim, dataB:dataBslim, cA, cB});
     }).catch(async ()=>{
       // Worker a échoué → fallback automatique
       return await runAnalysisFallback(dataA, dataB, cA, cB);
@@ -1296,7 +1299,7 @@ async function runAnalysis(){
     listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
   } else {
     // ── Mode fallback : thread principal avec yields ───
-    const result = await runAnalysisFallback(dataA, dataB, cA, cB);
+    const result = await runAnalysisFallback(dataAslim, dataBslim, cA, cB);
     listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
   }
 
