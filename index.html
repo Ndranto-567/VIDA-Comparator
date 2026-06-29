@@ -218,6 +218,7 @@ textarea{resize:vertical;min-height:56px}
     <nav class="app-nav">
       <button class="nav-tab active" id="navCompar" onclick="switchModule('compar')">⚖ Comparaison</button>
       <button class="nav-tab" id="navConsol" onclick="switchModule('consol')">📥 Consolidation</button>
+      <button class="nav-tab" id="navEclat" onclick="switchModule('eclat')">✂ Éclatement</button>
     </nav>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn-export" id="btnExport" style="display:none" onclick="exportExcel()">↓ Exporter rapport</button>
@@ -357,6 +358,84 @@ textarea{resize:vertical;min-height:56px}
 </div><!-- end moduleConsol -->
 
 <!-- ══ MODULE COMPARAISON ══ -->
+<!-- ══ MODULE ÉCLATEMENT ══ -->
+<div id="moduleEclat" style="display:none">
+  <div class="card fade">
+    <div class="card-header">
+      <h2>Éclatement de fichier Excel</h2>
+      <p>Divisez un fichier en plusieurs fichiers séparés ou plusieurs onglets selon les valeurs d'une colonne</p>
+    </div>
+
+    <div style="padding:24px 28px;display:flex;flex-direction:column;gap:20px">
+
+      <!-- Upload -->
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Fichier à éclater</div>
+        <div id="eclatUploadZone" style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:28px;text-align:center;cursor:pointer;transition:border-color .2s"
+          ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="event.preventDefault();this.style.borderColor='var(--border)';handleEclatFile(event.dataTransfer.files[0])">
+          <div style="font-size:32px;margin-bottom:8px">📂</div>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">Glissez votre fichier ici</div>
+          <div style="font-size:12px;color:var(--ink-muted);margin:4px 0 12px">ou</div>
+          <label class="btn-upload" style="background:var(--teal)">
+            Choisir un fichier
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleEclatFile(this.files[0])">
+          </label>
+        </div>
+        <div id="eclatFileInfo" style="display:none;margin-top:12px;padding:12px 16px;background:var(--paper);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:600" id="eclatFileName"></div>
+              <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="eclatFileStats"></div>
+            </div>
+            <button class="btn-ghost" style="font-size:11px;padding:4px 10px" onclick="resetEclatFile()">✕ Changer</button>
+          </div>
+          <!-- Sélecteur feuille si multi-onglets -->
+          <div id="eclatSheetSel" style="display:none;margin-top:10px">
+            <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille à utiliser</label>
+            <select id="eclatSheetPicker" style="font-size:12px" onchange="loadEclatSheet(this.value)"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Colonne d'éclatement -->
+      <div id="eclatColSection" style="display:none">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Colonne d'éclatement</div>
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+          <div class="col-selector" style="flex:1;min-width:200px">
+            <div class="col-label">Sélectionner la colonne</div>
+            <select id="eclatColPicker" onchange="previewEclatGroups()">
+              <option value="">— choisir —</option>
+            </select>
+          </div>
+          <div class="col-selector" style="min-width:180px">
+            <div class="col-label">Format de sortie</div>
+            <select id="eclatFormat">
+              <option value="files">Fichiers séparés → téléchargés dans un ZIP</option>
+              <option value="sheets">Onglets dans un seul fichier</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aperçu des groupes -->
+      <div id="eclatPreviewSection" style="display:none">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+          Aperçu des groupes
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted)" id="eclatGroupCount"></span>
+        </div>
+        <div id="eclatGroupList" style="display:flex;flex-wrap:wrap;gap:8px;max-height:200px;overflow-y:auto;padding:4px"></div>
+      </div>
+
+    </div>
+
+    <div class="card-footer">
+      <button class="btn-primary" id="btnEclater" style="display:none" onclick="runEclatement()">✂ Éclater</button>
+    </div>
+  </div>
+</div><!-- end moduleEclat -->
+
 <div id="moduleCompar">
 
   <!-- STEPS -->
@@ -706,26 +785,37 @@ function handleDrop(e,which){
 }
 function loadFile(file,which){
   if(!file) return;
+  // Afficher un indicateur de chargement dès le début
+  document.getElementById('prompt'+which).style.display='none';
+  const successEl = document.getElementById('success'+which);
+  successEl.style.display='block';
+  document.getElementById('name'+which).textContent='⏳ Chargement de '+file.name+'…';
+  document.getElementById('size'+which).textContent='Lecture en cours, veuillez patienter…';
+
   const reader=new FileReader();
   reader.onload=ev=>{
     try{
-      const wb=XLSX.read(ev.target.result,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
-      if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
-      if(which==='A'){
-        dataA=json.map((r,i)=>({...r,'__numA':'A'+(i+1),'__idxA':i}));
-        headersA=Object.keys(json[0]);
-      }else{
-        dataB=json.map((r,i)=>({...r,'__numB':'B'+(i+1),'__idxB':i}));
-        headersB=Object.keys(json[0]);
-      }
-      document.getElementById('prompt'+which).style.display='none';
-      document.getElementById('success'+which).style.display='block';
-      document.getElementById('name'+which).textContent=file.name;
-      document.getElementById('size'+which).textContent=(file.size/1024).toFixed(1)+' Ko — '+json.length+' lignes';
-      document.getElementById('zone'+which).classList.add('has-file');
-      checkStep1();
+      document.getElementById('size'+which).textContent='Analyse du fichier Excel…';
+      // Laisser le DOM se mettre à jour avant de lancer le parsing lourd
+      setTimeout(()=>{
+        try{
+          const wb=XLSX.read(ev.target.result,{type:'array'});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+          if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
+          if(which==='A'){
+            dataA=json.map((r,i)=>({...r,'__numA':'A'+(i+1),'__idxA':i}));
+            headersA=Object.keys(json[0]);
+          }else{
+            dataB=json.map((r,i)=>({...r,'__numB':'B'+(i+1),'__idxB':i}));
+            headersB=Object.keys(json[0]);
+          }
+          document.getElementById('name'+which).textContent=file.name;
+          document.getElementById('size'+which).textContent=(file.size/1024).toFixed(1)+' Ko — '+json.length+' lignes';
+          document.getElementById('zone'+which).classList.add('has-file');
+          checkStep1();
+        }catch(err){showAlert('Erreur lecture fichier '+which+': '+err);}
+      }, 50);
     }catch(err){showAlert('Erreur lecture fichier '+which+': '+err);}
   };
   reader.readAsArrayBuffer(file);
@@ -875,7 +965,7 @@ function renderLogicGrid(){
 // ════════════════════════════════════════════════════════
 // RÈGLE DE DÉCISION AUTOMATIQUE — Liste C
 // ════════════════════════════════════════════════════════
-function applyDecisionRules(listC, cA, cB){
+async function applyDecisionRules(listC, cA, cB){
   if(!cB.paiement) return; // pas de colonne Paiement mappée → ne rien automatiser
 
   // Regrouper par N° B pour détecter les doublons
@@ -885,6 +975,7 @@ function applyDecisionRules(listC, cA, cB){
     if(!groupsByNumB[numB]) groupsByNumB[numB]=[];
     groupsByNumB[numB].push(i);
   });
+  await sleep(8);
 
   // Tolérance pour "montants se rapprochent" — cas à 1 seul critère (CIN/Tél/Nom)
   const montantsProches = (mA, mB, tol) => {
@@ -901,7 +992,10 @@ function applyDecisionRules(listC, cA, cB){
     return HORS_PERIMETRE.some(mot => v.includes(mot));
   };
 
-  listC.forEach((item,i)=>{
+  const CHUNK_DR=500;
+  for(let _ci=0;_ci<listC.length;_ci+=CHUNK_DR){
+    const _end=Math.min(_ci+CHUNK_DR,listC.length);
+    for(let _i=_ci;_i<_end;_i++){ const item=listC[_i]; const i=_i;
     const rowA=item.rowA, rowB=item.rowB;
     const paiementVal = String(rowB[cB.paiement]||'').trim().toUpperCase();
     const criteres = item.sim?.matchedOn||[];
@@ -1030,7 +1124,9 @@ function applyDecisionRules(listC, cA, cB){
       item.explication = `Doublon sur N° B — une autre ligne a été retenue pour ce même N° B (montants [A] indisponibles)`;
       item.decision='Rejet';
     }
-  });
+    } // end inner for _i
+    await sleep(8);
+  } // end CHUNK_DR
 
   // ── Post-traitement : si un N° B a déjà une ligne AP/AP*, les lignes VMR ou
   //    AV-ResPEV du même groupe (issues du cas "1 seul critère") sont reclassées en Rejet ──
@@ -1147,29 +1243,36 @@ self.onmessage = function(e){
   }
   self.postMessage({type:'progress',phase:'index',done:dataB.length,total:dataB.length});
 
-  // ── Comparaison A vs candidats B ───────────────────
-  const listC=[], listD=[], matchedBIdx=new Set();
+  // ── Comparaison A vs candidats B — envoi par batches ──
+  const matchedBIdx=new Set();
+  const BATCH=2000; // envoyer les résultats toutes les 2000 lignes
+  let batchC=[], batchD=[];
+
   for(let ia=0;ia<dataA.length;ia++){
     const rA=dataA[ia];
     const candidates=new Set(noKeyB);
     if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
     if(cA.tel&&cB.tel){ const k=normPhone(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-    // Nom : pas de candidats par trigrammes (buckets trop grands sur noms malgaches)
-    // Jaro-Winkler appliqué sur les candidats CIN/Tél seulement
+    // Nom : Jaro-Winkler sur candidats CIN/Tél uniquement
     let bestScore=0, bestIdxB=-1, bestSim=null;
     for(const ib of candidates){
       const sim=similarity(rA,dataB[ib],cA,cB);
       if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
     }
     if(bestScore>=EXACT&&bestIdxB>=0){
-      listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
+      // Ne garder que les infos légères — pas rowA/rowB complets (trop lourd à transférer)
+      batchC.push({idxA:ia,idxB:bestIdxB,sim:{score:bestSim.score,matchedOn:bestSim.matchedOn,mntA:bestSim.mntA,mntB:bestSim.mntB},explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
       matchedBIdx.add(bestIdxB);
     } else {
-      listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
+      batchD.push({idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
     }
-    if(ia%500===0) self.postMessage({type:'progress',phase:'compare',done:ia,total:dataA.length});
+    // Envoyer batch et libérer la mémoire Worker
+    if((ia+1)%BATCH===0 || ia===dataA.length-1){
+      self.postMessage({type:'batch',batchC,batchD,done:ia+1,total:dataA.length});
+      batchC=[]; batchD=[];
+    }
   }
-  self.postMessage({type:'done', listC, listD, matchedBIdxArr:[...matchedBIdx]});
+  self.postMessage({type:'done', matchedBIdxArr:[...matchedBIdx]});
 };
 `;
 
@@ -1205,7 +1308,7 @@ async function runAnalysisFallback(dataA, dataB, cA, cB){
     }
   }
 
-  // Comparaison A
+  // Comparaison A — ne stocker que les indices (léger en mémoire)
   const listC=[], listD=[];
   const CHUNK=20;
   for(let i=0;i<dataA.length;i+=CHUNK){
@@ -1215,16 +1318,16 @@ async function runAnalysisFallback(dataA, dataB, cA, cB){
       const candidates=new Set(noKeyB);
       if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
       if(cA.tel&&cB.tel){ const k=normPhone2(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-      // Nom : Jaro-Winkler sur candidats CIN/Tél uniquement (trigrammes désactivés)
       let bestScore=0, bestIdxB=-1, bestSim=null;
       for(const ib of candidates){
         const sim=similarity(rA,dataB[ib],cA,cB);
         if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
       }
       if(bestScore>=EXACT&&bestIdxB>=0){
-        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
+        // Stocker uniquement indices + sim (pas rowA/rowB complets → économie mémoire)
+        listC.push({idxA:ia,idxB:bestIdxB,sim:{score:bestSim.score,matchedOn:bestSim.matchedOn,mntA:bestSim.mntA,mntB:bestSim.mntB},explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
       } else {
-        listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
+        listD.push({idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
       }
     }
     setProgress(10+Math.round(end/dataA.length*80),'Comparaison A ↔ B…',`${end} / ${dataA.length} entrées traitées`);
@@ -1272,19 +1375,22 @@ async function runAnalysis(){
     setProgress(2,'Analyse en arrière-plan…','Le traitement continue même si vous changez d\'onglet');
     const result = await new Promise((resolve, reject)=>{
       const worker = createAnalysisWorker();
+      const accumC=[], accumD=[];
       worker.onmessage = e => {
         const msg = e.data;
         if(msg.type==='progress'){
           if(msg.phase==='index'){
             const pct=2+Math.round(msg.done/msg.total*8);
             setProgress(pct,'Index sur B…',`${msg.done} / ${msg.total} lignes indexées`);
-          } else {
-            const pct=10+Math.round(msg.done/msg.total*80);
-            setProgress(pct,'Comparaison A ↔ B…',`${msg.done} / ${msg.total} entrées traitées`);
           }
+        } else if(msg.type==='batch'){
+          accumC.push(...msg.batchC);
+          accumD.push(...msg.batchD);
+          const pct=10+Math.round(msg.done/msg.total*80);
+          setProgress(pct,'Comparaison A ↔ B…',`${msg.done} / ${msg.total} entrées traitées`);
         } else if(msg.type==='done'){
           worker.terminate();
-          resolve({listC:msg.listC, listD:msg.listD, matchedBIdxArr:msg.matchedBIdxArr});
+          resolve({listC:accumC, listD:accumD, matchedBIdxArr:msg.matchedBIdxArr});
         }
       };
       worker.onerror = err => {
@@ -1304,18 +1410,32 @@ async function runAnalysis(){
   }
 
   // Réattacher les vrais objets rowA/rowB (le Worker transfère des copies JSON)
+  setProgress(90,'Reconstruction des données…',`${listC.length} correspondances trouvées`);
+  await sleep(20);
   listC.forEach(item=>{ item.rowA=dataA[item.idxA]; item.rowB=dataB[item.idxB]; });
   listD.forEach(item=>{ item.row=dataA[item.idxA]; });
   // Reconstituer le Set des indices B matchés (pour liste E)
   const matchedBIdxSet = new Set(result._matchedBIdxArr||listC.map(item=>item.idxB));
 
   // Appliquer la règle de décision automatique sur C (si colonne Paiement mappée)
-  applyDecisionRules(listC, cA, cB);
+  setProgress(91,'Application des règles de décision…','');
+  await sleep(20);
+  await applyDecisionRules(listC, cA, cB);
 
-  // E : lignes de B sans correspondance dans C
+  // E : lignes de B sans correspondance dans C — construit par chunks pour ne pas bloquer
   setProgress(92,'Construction de la liste E…','');
   await sleep(10);
-  const listE=dataB.map((r,i)=>({row:r,idxB:i,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'})).filter((_,i)=>!matchedBIdxSet.has(i));
+  const listE=[];
+  const CHUNKE=5000;
+  for(let i=0;i<dataB.length;i+=CHUNKE){
+    const end=Math.min(i+CHUNKE,dataB.length);
+    for(let ib=i;ib<end;ib++){
+      if(!matchedBIdxSet.has(ib))
+        listE.push({row:dataB[ib],idxB:ib,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'});
+    }
+    setProgress(92+Math.round((end/dataB.length)*3),'Construction de la liste E…',`${end} / ${dataB.length} lignes traitées`);
+    await sleep(8);
+  }
   const listF=[], listG=[], listH=[];
 
   setProgress(95,'Finalisation…','');
@@ -1641,8 +1761,10 @@ async function exportExcel(){
 function switchModule(mod){
   document.getElementById('moduleCompar').style.display = mod==='compar'?'block':'none';
   document.getElementById('moduleConsol').style.display = mod==='consol'?'block':'none';
+  document.getElementById('moduleEclat').style.display  = mod==='eclat'?'block':'none';
   document.getElementById('navCompar').classList.toggle('active', mod==='compar');
   document.getElementById('navConsol').classList.toggle('active', mod==='consol');
+  document.getElementById('navEclat').classList.toggle('active',  mod==='eclat');
   document.getElementById('btnExport').style.display      = (mod==='compar'&&results)?'block':'none';
   document.getElementById('btnExportConsol').style.display= (mod==='consol'&&consolData.length)?'block':'none';
 }
@@ -2195,6 +2317,209 @@ async function exportConsol(){
 // ════════════════════════════════════════════════════════
 // ALERTS
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// MODULE ÉCLATEMENT
+// ════════════════════════════════════════════════════════
+let eclatWb=null, eclatData=[], eclatHeaders=[], eclatFile=null;
+
+async function handleEclatFile(file){
+  if(!file) return;
+  eclatFile=file;
+  document.getElementById('eclatUploadZone').style.display='none';
+  document.getElementById('eclatFileName').textContent='⏳ Chargement de '+file.name+'…';
+  document.getElementById('eclatFileStats').textContent='Lecture en cours…';
+  document.getElementById('eclatFileInfo').style.display='block';
+  await sleep(30);
+  try{
+    await ensureExcelJS();
+    const buf=await file.arrayBuffer();
+    eclatWb=new ExcelJS.Workbook();
+    await eclatWb.xlsx.load(buf);
+    const sheetNames=eclatWb.worksheets.map(ws=>ws.name);
+    const picker=document.getElementById('eclatSheetPicker');
+    picker.innerHTML=sheetNames.map(s=>`<option value="${escH(s)}">${escH(s)}</option>`).join('');
+    document.getElementById('eclatSheetSel').style.display=sheetNames.length>1?'block':'none';
+    loadEclatSheet(sheetNames[0]);
+  }catch(e){showAlert('Erreur lecture: '+e.message);}
+}
+function loadEclatSheet(sheetName){
+  const ws=eclatWb.getWorksheet(sheetName);
+  if(!ws){return;}
+  const hRow=ws.getRow(1);
+  eclatHeaders=[];
+  hRow.eachCell({includeEmpty:true},(cell,col)=>{
+    eclatHeaders[col-1]=String(cell.value??'').trim()||'Colonne '+col;
+  });
+  eclatData=[];
+  for(let r=2;r<=ws.rowCount;r++){
+    const row=ws.getRow(r);
+    if(row.cellCount===0) continue;
+    const obj={};
+    eclatHeaders.forEach((h,ci)=>{
+      const cell=row.getCell(ci+1);
+      let v=cell.value;
+      if(v&&typeof v==='object'&&v.result!==undefined) v=v.result;
+      if(v&&typeof v==='object'&&v.text!==undefined) v=v.text;
+      obj[h]=v==null?'':v;
+    });
+    eclatData.push(obj);
+  }
+  document.getElementById('eclatFileName').textContent=eclatFile.name;
+  document.getElementById('eclatFileStats').textContent=
+    `${eclatData.length} lignes · ${eclatHeaders.length} colonnes · feuille "${sheetName}"`;
+  // Remplir sélecteur colonnes
+  const colPicker=document.getElementById('eclatColPicker');
+  colPicker.innerHTML='<option value="">— choisir —</option>'+
+    eclatHeaders.map(h=>`<option value="${escH(h)}">${escH(h)}</option>`).join('');
+  document.getElementById('eclatColSection').style.display='block';
+  document.getElementById('eclatPreviewSection').style.display='none';
+  document.getElementById('btnEclater').style.display='none';
+}
+function resetEclatFile(){
+  eclatWb=null; eclatData=[]; eclatHeaders=[]; eclatFile=null;
+  document.getElementById('eclatUploadZone').style.display='block';
+  document.getElementById('eclatFileInfo').style.display='none';
+  document.getElementById('eclatColSection').style.display='none';
+  document.getElementById('eclatPreviewSection').style.display='none';
+  document.getElementById('btnEclater').style.display='none';
+}
+function previewEclatGroups(){
+  const col=document.getElementById('eclatColPicker').value;
+  if(!col){
+    document.getElementById('eclatPreviewSection').style.display='none';
+    document.getElementById('btnEclater').style.display='none';
+    return;
+  }
+  // Compter les valeurs uniques
+  const groups=new Map();
+  eclatData.forEach(row=>{
+    const val=String(row[col]??'').trim()||'(vide)';
+    groups.set(val,(groups.get(val)||0)+1);
+  });
+  const sorted=[...groups.entries()].sort((a,b)=>b[1]-a[1]);
+  document.getElementById('eclatGroupCount').textContent=
+    ` — ${sorted.length} valeur(s) distincte(s)`;
+  const list=document.getElementById('eclatGroupList');
+  list.innerHTML=sorted.map(([val,cnt])=>`
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:color-mix(in srgb,var(--teal) 8%,white);border:1px solid color-mix(in srgb,var(--teal) 20%,transparent);border-radius:20px;font-size:12px">
+      <span style="font-weight:600">${escH(val)}</span>
+      <span style="color:var(--ink-muted)">${cnt} lignes</span>
+    </div>`).join('');
+  document.getElementById('eclatPreviewSection').style.display='block';
+  document.getElementById('btnEclater').style.display='block';
+}
+async function runEclatement(){
+  const col=document.getElementById('eclatColPicker').value;
+  const fmt=document.getElementById('eclatFormat').value;
+  if(!col||!eclatData.length){showAlert('Sélectionnez une colonne.');return;}
+
+  // Grouper les données
+  const groups=new Map();
+  eclatData.forEach(row=>{
+    const val=String(row[col]??'').trim()||'(vide)';
+    if(!groups.has(val)) groups.set(val,[]);
+    groups.get(val).push(row);
+  });
+
+  showProgress(true);
+  setProgress(0,'Chargement ExcelJS…','');
+  await sleep(20);
+  await ensureExcelJS();
+
+  const DARK='FF1A1A2E',WHITE='FFFFFFFF';
+  const fillS=argb=>({type:'pattern',pattern:'solid',fgColor:{argb}});
+  const brd=()=>({top:{style:'thin',color:{argb:'FFCCCCCC'}},bottom:{style:'thin',color:{argb:'FFCCCCCC'}},left:{style:'thin',color:{argb:'FFCCCCCC'}},right:{style:'thin',color:{argb:'FFCCCCCC'}}});
+
+  const sanitize=s=>String(s).replace(/[\\/*?:\[\]]/g,'_').slice(0,31);
+  const groupArr=[...groups.entries()];
+  const total=groupArr.length;
+
+  if(fmt==='sheets'){
+    // ── Mode onglets : un seul fichier avec N onglets ──
+    const wb=new ExcelJS.Workbook();
+    for(let gi=0;gi<total;gi++){
+      const [val,rows]=groupArr[gi];
+      setProgress(Math.round(gi/total*90),`Onglet : ${val}`,`${gi+1} / ${total}`);
+      await sleep(5);
+      const ws=wb.addWorksheet(sanitize(val));
+      ws.columns=eclatHeaders.map(h=>({header:h,width:22}));
+      ws.getRow(1).eachCell(cell=>{
+        cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};cell.border=brd();
+      });
+      rows.forEach(row=>{
+        const wsRow=ws.addRow(eclatHeaders.map(h=>row[h]??''));
+        wsRow.eachCell(cell=>{
+          cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};cell.border=brd();
+        });
+      });
+    }
+    setProgress(92,'Génération du fichier…','');
+    await sleep(20);
+    const buf=await wb.xlsx.writeBuffer();
+    setProgress(100,'Téléchargement…','');
+    await sleep(100);
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const baseName=eclatFile.name.replace(/\.[^.]+$/,'');
+    a.href=url; a.download=`${baseName}_eclate_${col}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+  } else {
+    // ── Mode fichiers séparés : générer un ZIP contenant tous les fichiers ──
+    setProgress(2,'Chargement JSZip…','');
+    await sleep(10);
+    if(typeof JSZip==='undefined'){
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload=res; s.onerror=()=>rej(new Error('Impossible de charger JSZip'));
+        document.head.appendChild(s);
+      });
+    }
+    const zip=new JSZip();
+    const baseName=eclatFile.name.replace(/\.[^.]+$/,'');
+
+    for(let gi=0;gi<total;gi++){
+      const [val,rows]=groupArr[gi];
+      setProgress(5+Math.round(gi/total*85),`Génération : ${val}`,`${gi+1} / ${total}`);
+      await sleep(5);
+      const wb=new ExcelJS.Workbook();
+      const ws=wb.addWorksheet(sanitize(val));
+      ws.columns=eclatHeaders.map(h=>({header:h,width:22}));
+      ws.getRow(1).eachCell(cell=>{
+        cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};cell.border=brd();
+      });
+      rows.forEach(row=>{
+        const wsRow=ws.addRow(eclatHeaders.map(h=>row[h]??''));
+        wsRow.eachCell(cell=>{
+          cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};cell.border=brd();
+        });
+      });
+      const buf=await wb.xlsx.writeBuffer();
+      zip.file(`${baseName}_${sanitize(val)}.xlsx`, buf);
+    }
+
+    setProgress(92,'Compression du ZIP…','');
+    await sleep(10);
+    const zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+      (meta)=>{ setProgress(92+Math.round(meta.percent/100*6),'Compression…',`${Math.round(meta.percent)}%`); }
+    );
+    setProgress(99,'Téléchargement…','');
+    await sleep(100);
+    const url=URL.createObjectURL(zipBlob);
+    const a=document.createElement('a');
+    a.href=url; a.download=`${baseName}_eclate_${sanitize(col)}.zip`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    setProgress(100,'Terminé !','');
+    await sleep(200);
+  }
+  showProgress(false);
+  showAlert(`Éclatement terminé — ${total} groupe(s) dans le fichier ZIP.`);
+}
+
 function showAlert(msg){const b=document.getElementById('alertBox');b.textContent='⚠ '+msg;b.style.display='block';}
 function clearAlert(){document.getElementById('alertBox').style.display='none';}
 </script>
