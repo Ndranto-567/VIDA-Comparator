@@ -524,7 +524,7 @@ textarea{resize:vertical;min-height:56px}
   <div id="page3" class="card fade" style="display:none">
     <div class="card-header">
       <h2>Paramètres d'analyse</h2>
-      <p>Vérifiez la configuration avant de lancer l'analyse (listes C et D uniquement — E, F, G, H suspendues)</p>
+      <p>Vérifiez la configuration avant de lancer l'analyse (listes C, D et E — F, G, H suspendues)</p>
     </div>
     <div class="settings-block">
       <div class="logic-box">
@@ -576,16 +576,19 @@ const TABS = [
    info:'✓ Personnes présentes dans les deux listes avec correspondance exacte (≥95%) sur au moins un critère.'},
   {id:'D', label:'D', desc:'A \\ B', color:'var(--red)',
    info:'⚠ Réclamants (A) absents de la liste initiale (requête) (B) — réclamations à vérifier.'},
+  {id:'E', label:'E', desc:'B \\ A', color:'var(--green)',
+   info:'⏸ Personnes dans la liste initiale (B) sans réclamation dans A — droits potentiels non réclamés.'},
 ];
-// Listes E, F, G, H suspendues (non calculées) — réactivables en restaurant le bloc précédent
+// F, G, H suspendues (non calculées)
 
 const LOGIC_ITEMS = [
   {id:'A',color:'var(--teal)',title:'Feuille A',desc:'Données complètes fichier A'},
   {id:'B',color:'var(--gold)',title:'Feuille B',desc:'Données complètes fichier B'},
   {id:'C',color:'var(--teal)',title:'C = A ∩ B',desc:'Correspondance exacte dans les deux listes'},
   {id:'D',color:'var(--red)',title:'D = A \\ B',desc:'Réclamants absents de B'},
+  {id:'E',color:'var(--green)',title:'E = B \\ A',desc:'Dans B sans réclamation dans A'},
 ];
-// E, F, G, H suspendues (non calculées)
+// F, G, H suspendues (non calculées)
 
 // ════════════════════════════════════════════════════════
 // UTILS — Jaro-Winkler
@@ -1046,6 +1049,199 @@ function applyDecisionRules(listC, cA, cB){
   });
 }
 
+
+// ════════════════════════════════════════════════════════
+// WEB WORKER EMBARQUÉ — code de calcul isolé du thread UI
+// Tourne même quand l'onglet est en arrière-plan
+// ════════════════════════════════════════════════════════
+const WORKER_SRC = `
+'use strict';
+
+function normPhone(p){
+  if(!p) return '';
+  return String(p).replace(/\\D/g,'').slice(-9);
+}
+function jaro(s1,s2){
+  if(s1===s2) return 1;
+  if(!s1.length||!s2.length) return 0;
+  const md=Math.floor(Math.max(s1.length,s2.length)/2)-1;
+  const m1=new Array(s1.length).fill(false);
+  const m2=new Array(s2.length).fill(false);
+  let matches=0,trans=0;
+  for(let i=0;i<s1.length;i++){
+    const st=Math.max(0,i-md), en=Math.min(i+md+1,s2.length);
+    for(let j=st;j<en;j++){
+      if(m2[j]||s1[i]!==s2[j]) continue;
+      m1[i]=m2[j]=true; matches++; break;
+    }
+  }
+  if(!matches) return 0;
+  let k=0;
+  for(let i=0;i<s1.length;i++){
+    if(!m1[i]) continue;
+    while(!m2[k]) k++;
+    if(s1[i]!==s2[k]) trans++;
+    k++;
+  }
+  return (matches/s1.length+matches/s2.length+(matches-trans/2)/matches)/3;
+}
+function jaroWinkler(a,b){
+  const j=jaro(a,b); let p=0;
+  for(let i=0;i<Math.min(4,Math.min(a.length,b.length));i++){if(a[i]===b[i])p++;else break;}
+  return j+p*0.1*(1-j);
+}
+function parseMnt(v){
+  if(v===null||v===undefined||v==='') return null;
+  const n=parseFloat(String(v).replace(/[^0-9.,\\-]/g,'').replace(',','.'));
+  return isNaN(n)?null:n;
+}
+function mntMatch(a,b){
+  if(a===null||b===null) return null;
+  if(a===0&&b===0) return null;
+  const avg=(Math.abs(a)+Math.abs(b))/2;
+  if(avg===0) return null;
+  return Math.abs(a-b)/avg<=0.05?1:0;
+}
+function normalize(s){ return String(s||'').trim().toLowerCase(); }
+function similarity(rA,rB,cA,cB){
+  const nomA=normalize(rA[cA.nom]||''), nomB=normalize(rB[cB.nom]||'');
+  const cinA=normalize(rA[cA.cin]||''), cinB=normalize(rB[cB.cin]||'');
+  const telA=normPhone(rA[cA.tel]),     telB=normPhone(rB[cB.tel]);
+  const mntA=parseMnt(rA[cA.mnt]),     mntB=parseMnt(rB[cB.mnt]);
+  const sn  =(nomA&&nomB)?jaroWinkler(nomA,nomB):0;
+  const sc  =(cinA&&cinB&&cinA===cinB)?1:0;
+  const st  =(telA&&telB&&telA===telB)?1:0;
+  let sc4=0;
+  if(cinA&&cinB&&cinA===cinB){ const m=mntMatch(mntA,mntB); if(m===1) sc4=1; }
+  const mx=Math.max(sn,sc,st,sc4);
+  const matched=[];
+  if(sn>=0.95) matched.push('Nom');
+  if(sc>=0.95) matched.push('CIN');
+  if(st>=0.95) matched.push('Tél');
+  if(sc4>=0.95) matched.push('CIN+Montant');
+  return {score:Math.round(mx*100),matchedOn:matched,mntA,mntB};
+}
+function trigrams(s){
+  const n=s.replace(/\\s+/g,'').toLowerCase();
+  if(n.length<3) return n.length?[n]:[];
+  const t=new Set();
+  for(let i=0;i<=n.length-3;i++) t.add(n.slice(i,i+3));
+  return [...t];
+}
+function normKey(v){ return String(v??'').trim().toLowerCase(); }
+
+self.onmessage = function(e){
+  const {dataA, dataB, cA, cB} = e.data;
+  const EXACT = 95;
+
+  // ── Indexation de B ────────────────────────────────
+  const idxCIN=new Map(), idxTel=new Map(), idxTri=new Map(), noKeyB=new Set();
+  for(let ib=0;ib<dataB.length;ib++){
+    const rB=dataB[ib]; let indexed=false;
+    if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
+    if(cB.tel){ const k=normPhone(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
+    if(cB.nom){ const tris=trigrams(normKey(rB[cB.nom])); if(tris.length){ tris.forEach(t=>{ if(!idxTri.has(t)) idxTri.set(t,new Set()); idxTri.get(t).add(ib); }); indexed=true; } }
+    if(!indexed) noKeyB.add(ib);
+    if(ib%5000===0) self.postMessage({type:'progress',phase:'index',done:ib,total:dataB.length});
+  }
+  self.postMessage({type:'progress',phase:'index',done:dataB.length,total:dataB.length});
+
+  // ── Comparaison A vs candidats B ───────────────────
+  const listC=[], listD=[], matchedBIdx=new Set();
+  for(let ia=0;ia<dataA.length;ia++){
+    const rA=dataA[ia];
+    const candidates=new Set(noKeyB);
+    if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
+    if(cA.tel&&cB.tel){ const k=normPhone(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
+    if(cA.nom&&cB.nom){
+      const tris=trigrams(normKey(rA[cA.nom]));
+      const freq=new Map();
+      tris.forEach(t=>{ if(idxTri.has(t)) idxTri.get(t).forEach(ib=>freq.set(ib,(freq.get(ib)||0)+1)); });
+      freq.forEach((cnt,ib)=>{ if(cnt>=2) candidates.add(ib); });
+    }
+    let bestScore=0, bestIdxB=-1, bestSim=null;
+    for(const ib of candidates){
+      const sim=similarity(rA,dataB[ib],cA,cB);
+      if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
+    }
+    if(bestScore>=EXACT&&bestIdxB>=0){
+      listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
+      matchedBIdx.add(bestIdxB);
+    } else {
+      listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
+    }
+    if(ia%500===0) self.postMessage({type:'progress',phase:'compare',done:ia,total:dataA.length});
+  }
+  self.postMessage({type:'done', listC, listD, matchedBIdxArr:[...matchedBIdx]});
+};
+`;
+
+function createAnalysisWorker(){
+  const blob = new Blob([WORKER_SRC], {type:'application/javascript'});
+  return new Worker(URL.createObjectURL(blob));
+}
+
+// Fallback : calcul sur le thread principal (file:// ou Worker bloqué)
+// Même logique que le Worker, avec await sleep() pour ne pas geler l'UI
+async function runAnalysisFallback(dataA, dataB, cA, cB){
+  const normKey = v => String(v??'').trim().toLowerCase();
+  const normPhone2 = v => String(v??'').replace(/\D/g,'').slice(-9);
+  const trigrams2 = s => {
+    const n=s.replace(/\s+/g,'').toLowerCase();
+    if(n.length<3) return n.length?[n]:[];
+    const t=new Set();
+    for(let i=0;i<=n.length-3;i++) t.add(n.slice(i,i+3));
+    return [...t];
+  };
+  const EXACT=95;
+  const idxCIN=new Map(), idxTel=new Map(), idxTri=new Map(), noKeyB=new Set();
+
+  // Indexation B
+  for(let ib=0;ib<dataB.length;ib++){
+    const rB=dataB[ib]; let indexed=false;
+    if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
+    if(cB.tel){ const k=normPhone2(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
+    if(cB.nom){ const tris=trigrams2(normKey(rB[cB.nom])); if(tris.length){ tris.forEach(t=>{ if(!idxTri.has(t)) idxTri.set(t,new Set()); idxTri.get(t).add(ib); }); indexed=true; } }
+    if(!indexed) noKeyB.add(ib);
+    if(ib%2000===0 && ib>0){
+      setProgress(2+Math.round(ib/dataB.length*8),'Index sur B…',`${ib} / ${dataB.length} lignes`);
+      await sleep(15);
+    }
+  }
+
+  // Comparaison A
+  const listC=[], listD=[];
+  const CHUNK=20;
+  for(let i=0;i<dataA.length;i+=CHUNK){
+    const end=Math.min(i+CHUNK,dataA.length);
+    for(let ia=i;ia<end;ia++){
+      const rA=dataA[ia];
+      const candidates=new Set(noKeyB);
+      if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
+      if(cA.tel&&cB.tel){ const k=normPhone2(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
+      if(cA.nom&&cB.nom){
+        const tris=trigrams2(normKey(rA[cA.nom]));
+        const freq=new Map();
+        tris.forEach(t=>{ if(idxTri.has(t)) idxTri.get(t).forEach(ib=>freq.set(ib,(freq.get(ib)||0)+1)); });
+        freq.forEach((cnt,ib)=>{ if(cnt>=2) candidates.add(ib); });
+      }
+      let bestScore=0, bestIdxB=-1, bestSim=null;
+      for(const ib of candidates){
+        const sim=similarity(rA,dataB[ib],cA,cB);
+        if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
+      }
+      if(bestScore>=EXACT&&bestIdxB>=0){
+        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
+      } else {
+        listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
+      }
+    }
+    setProgress(10+Math.round(end/dataA.length*80),'Comparaison A ↔ B…',`${end} / ${dataA.length} entrées traitées`);
+    await sleep(15);
+  }
+  return {listC, listD, matchedBIdxArr:listC.map(item=>item.idxB)};
+}
+
 async function runAnalysis(){
   clearAlert();
   const codifMode=document.querySelector('input[name="codifMode"]:checked')?.value||'reg';
@@ -1054,48 +1250,70 @@ async function runAnalysis(){
 
   showProgress(true);
   setProgress(0,'Démarrage de l\'analyse…','');
-
   await sleep(50);
 
-  // Build lists in chunks to keep UI responsive
-  const EXACT=0.95;
-  const fThreshold=threshold/100;
+  // ── Lancer le Worker si possible, sinon fallback thread principal ──
+  setProgress(2,'Lancement de l\'analyse…','');
+  await sleep(30);
 
-  const matchedBIdx=new Set();
-  const listC=[], listD=[];
+  // Détection Worker disponible (bloqué sur file:// dans certains navigateurs)
+  const workerAvailable = typeof Worker !== 'undefined' && (
+    location.protocol !== 'file:' ||
+    (() => { try { new Worker(URL.createObjectURL(new Blob([''],{type:'application/javascript'}))); return true; } catch(e){ return false; } })()
+  );
 
-  const total=dataA.length;
-  setProgress(5,'Comparaison A avec B…',`0 / ${total} entrées traitées`);
-  await sleep(20);
+  let listC, listD;
 
-  // Process A vs B in chunks
-  const CHUNK=50;
-  for(let i=0;i<dataA.length;i+=CHUNK){
-    const end=Math.min(i+CHUNK,dataA.length);
-    for(let ia=i;ia<end;ia++){
-      const rA=dataA[ia];
-      let bestScore=0, bestIdxB=-1, bestSim=null;
-      for(let ib=0;ib<dataB.length;ib++){
-        const sim=similarity(rA,dataB[ib],cA,cB);
-        if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
-      }
-      if(bestScore>=EXACT*100&&bestIdxB>=0){
-        listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
-        matchedBIdx.add(bestIdxB);
-      }else{
-        listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
-      }
-    }
-    const pct=5+((end/total)*40);
-    setProgress(pct,'Comparaison A avec B…',`${end} / ${total} entrées traitées`);
-    await sleep(0);
+  if(workerAvailable){
+    // ── Mode Worker : tourne même en arrière-plan ──────
+    setProgress(2,'Analyse en arrière-plan…','Le traitement continue même si vous changez d\'onglet');
+    const result = await new Promise((resolve, reject)=>{
+      const worker = createAnalysisWorker();
+      worker.onmessage = e => {
+        const msg = e.data;
+        if(msg.type==='progress'){
+          if(msg.phase==='index'){
+            const pct=2+Math.round(msg.done/msg.total*8);
+            setProgress(pct,'Index sur B…',`${msg.done} / ${msg.total} lignes indexées`);
+          } else {
+            const pct=10+Math.round(msg.done/msg.total*80);
+            setProgress(pct,'Comparaison A ↔ B…',`${msg.done} / ${msg.total} entrées traitées`);
+          }
+        } else if(msg.type==='done'){
+          worker.terminate();
+          resolve({listC:msg.listC, listD:msg.listD, matchedBIdxArr:msg.matchedBIdxArr});
+        }
+      };
+      worker.onerror = err => {
+        worker.terminate();
+        reject(err);
+      };
+      worker.postMessage({dataA, dataB, cA, cB});
+    }).catch(async ()=>{
+      // Worker a échoué → fallback automatique
+      return await runAnalysisFallback(dataA, dataB, cA, cB);
+    });
+    listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
+  } else {
+    // ── Mode fallback : thread principal avec yields ───
+    const result = await runAnalysisFallback(dataA, dataB, cA, cB);
+    listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
   }
+
+  // Réattacher les vrais objets rowA/rowB (le Worker transfère des copies JSON)
+  listC.forEach(item=>{ item.rowA=dataA[item.idxA]; item.rowB=dataB[item.idxB]; });
+  listD.forEach(item=>{ item.row=dataA[item.idxA]; });
+  // Reconstituer le Set des indices B matchés (pour liste E)
+  const matchedBIdxSet = new Set(result._matchedBIdxArr||listC.map(item=>item.idxB));
 
   // Appliquer la règle de décision automatique sur C (si colonne Paiement mappée)
   applyDecisionRules(listC, cA, cB);
 
-  // E, F, G, H suspendus — seules C et D sont générées
-  const listE=[], listF=[], listG=[], listH=[];
+  // E : lignes de B sans correspondance dans C
+  setProgress(92,'Construction de la liste E…','');
+  await sleep(10);
+  const listE=dataB.map((r,i)=>({row:r,idxB:i,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'})).filter((_,i)=>!matchedBIdxSet.has(i));
+  const listF=[], listG=[], listH=[];
 
   setProgress(95,'Finalisation…','');
   await sleep(100);
@@ -1123,6 +1341,7 @@ function renderResults(){
     {label:'Fichier B',value:dataB.length,color:'var(--gold)',icon:'📋'},
     {label:'Liste C (A∩B)',value:results.listC.length,color:'var(--teal)',icon:'✓'},
     {label:'Liste D (A\\B)',value:results.listD.length,color:'var(--red)',icon:'⚠'},
+    {label:'Liste E (B\\A)',value:results.listE.length,color:'var(--green)',icon:'⏸'},
   ];
   document.getElementById('statsRow').innerHTML=stats.map(s=>`
     <div class="stat-card">
@@ -1387,13 +1606,15 @@ async function exportExcel(){
   }
 
   addSheet('D — Réclamants absents de B',['N° A',...distHdA,cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listD.map(i=>[regNumA(i.row),...distValA(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
-  // Feuilles E, F, G, H suspendues — seules A, B, C, D sont exportées
+  // Feuille E — Dus sans réclamation
+  addSheet('E — Dus sans réclamation',['N° B',...distHdB,cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listE.map(i=>[regNumB(i.row),...distValB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
+  // Feuilles F, G, H suspendues
 
   // Résumé
   const wsSummary=wb.addWorksheet('Résumé');
   wsSummary.columns=[{header:'Liste',width:10},{header:'Description',width:50},{header:'Entrées',width:14}];
   wsSummary.getRow(1).eachCell(cell=>{cell.fill=fillS(DARK);cell.font=fontS(WHITE,true);cell.border=brd();});
-  [['A','Fichier source — Réclamants',dataA.length],['B','Fichier source — Liste initiale (requête)',dataB.length],['C','A ∩ B — Correspondances exactes',results.listC.length],['D','A \ B — Réclamants absents de B',results.listD.length],['','Généré le',new Date().toLocaleString('fr-FR')],['','Listes E, F, G, H','Suspendues']].forEach(r=>{const row=wsSummary.addRow(r);row.eachCell(c=>{c.fill=fillS(WHITE);c.font=fontS(DARK,false);c.border=brd();});});
+  [['A','Fichier source — Réclamants',dataA.length],['B','Fichier source — Liste initiale (requête)',dataB.length],['C','A ∩ B — Correspondances exactes',results.listC.length],['D','A \ B — Réclamants absents de B',results.listD.length],['','Généré le',new Date().toLocaleString('fr-FR')],['E','B \\ A — Dus sans réclamation',results.listE.length],['','Listes F, G, H','Suspendues']].forEach(r=>{const row=wsSummary.addRow(r);row.eachCell(c=>{c.fill=fillS(WHITE);c.font=fontS(DARK,false);c.border=brd();});});
 
   setProgress(90,'Génération du fichier Excel…','Compression en cours…');
   await sleep(30);
@@ -1648,34 +1869,73 @@ function readSheetFromWorkbook(wb, sheetName, headerRow=1){
 // ── Build mapping UI ─────────────────────────────────────
 function tryShowMapping(){
   if(!consolTarget || !sourceQueue.length) return;
-  // Build union of all source headers across all queued files
-  const allSrcHeaders=[...new Set(sourceQueue.flatMap(item=>{
-    const {headers}=readSheetFromWorkbook(item.wb, item.selectedSheet, item.headerRow);
-    return headers;
-  }))];
   const section=document.getElementById('consolMappingSection');
   const pairs=document.getElementById('consolMappingPairs');
   section.style.display='block';
   pairs.innerHTML='';
-  allSrcHeaders.forEach((srcCol,i)=>{
-    const matchIdx=consolHeaders.findIndex(tc=>tc.toLowerCase().trim()===srcCol.toLowerCase().trim());
-    const div=document.createElement('div');
-    div.className='mapping-pair';
-    div.innerHTML=`
-      <div style="font-size:12px;padding:6px 10px;background:color-mix(in srgb,var(--gold) 10%,white);border-radius:6px;border:1px solid color-mix(in srgb,var(--gold) 25%,transparent)">
-        ${escH(srcCol)}</div>
-      <div class="arrow">→</div>
-      <select id="cmap_${i}" style="font-size:12px">
-        <option value="">— ignorer —</option>
-        ${consolHeaders.map((tc,ti)=>`<option value="${escH(tc)}" ${ti===matchIdx?'selected':''}>${escH(tc)}</option>`).join('')}
-      </select>`;
-    pairs.appendChild(div);
-  });
-  // Store headers for getMapping
-  pairs.dataset.srcHeaders=JSON.stringify(allSrcHeaders);
+
+  if(sourceQueue.length===1){
+    // ── Mode 1 source : mapping colonne par colonne ──────
+    pairs.dataset.mode='mapping';
+    const {headers:srcHeaders}=readSheetFromWorkbook(
+      sourceQueue[0].wb, sourceQueue[0].selectedSheet, sourceQueue[0].headerRow);
+    pairs.dataset.srcHeaders=JSON.stringify(srcHeaders);
+
+    // Header
+    const titleDiv=document.createElement('div');
+    titleDiv.style.cssText='font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px';
+    titleDiv.textContent='Mapping des colonnes — Source → Cible';
+    pairs.appendChild(titleDiv);
+
+    srcHeaders.forEach((srcCol,i)=>{
+      const matchIdx=consolHeaders.findIndex(tc=>tc.toLowerCase().trim()===srcCol.toLowerCase().trim());
+      const div=document.createElement('div');
+      div.className='mapping-pair';
+      div.innerHTML=`
+        <div style="font-size:12px;padding:6px 10px;background:color-mix(in srgb,var(--gold) 10%,white);border-radius:6px;border:1px solid color-mix(in srgb,var(--gold) 25%,transparent)">
+          ${escH(srcCol)}</div>
+        <div class="arrow">→</div>
+        <select id="cmap_${i}" style="font-size:12px">
+          <option value="">— ignorer —</option>
+          ${consolHeaders.map((tc,ti)=>`<option value="${escH(tc)}" ${ti===matchIdx?'selected':''}>${escH(tc)}</option>`).join('')}
+        </select>`;
+      pairs.appendChild(div);
+    });
+
+  } else {
+    // ── Mode N sources : en-têtes identiques requis ──────
+    pairs.dataset.mode='direct';
+    pairs.dataset.srcHeaders='[]';
+
+    // Vérifier que toutes les sources ont les mêmes en-têtes que la cible
+    const warnings=[];
+    sourceQueue.forEach((item,qi)=>{
+      const {headers:srcH}=readSheetFromWorkbook(item.wb, item.selectedSheet, item.headerRow);
+      const missing=consolHeaders.filter(h=>!h.startsWith('__') && !srcH.includes(h));
+      const extra=srcH.filter(h=>!consolHeaders.includes(h));
+      if(missing.length||extra.length){
+        warnings.push(`<b>${escH(item.file.name)}</b>${missing.length?` — colonnes manquantes: ${missing.map(escH).join(', ')}`:''}${extra.length?` — colonnes inconnues: ${extra.map(escH).join(', ')}`:''}`);
+      }
+    });
+
+    const infoDiv=document.createElement('div');
+    infoDiv.style.cssText='font-size:12px;padding:12px 16px;border-radius:8px;margin-bottom:8px';
+    if(warnings.length){
+      infoDiv.style.background='color-mix(in srgb,var(--gold) 12%,white)';
+      infoDiv.style.border='1px solid color-mix(in srgb,var(--gold) 30%,transparent)';
+      infoDiv.innerHTML=`⚠ <b>Attention</b> — ${warnings.length} fichier(s) ont des en-têtes différents de la cible. Les colonnes inconnues seront ignorées, les colonnes manquantes resteront vides.<br><br>${warnings.join('<br>')}`;
+    } else {
+      infoDiv.style.background='color-mix(in srgb,var(--green) 8%,white)';
+      infoDiv.style.border='1px solid color-mix(in srgb,var(--green) 25%,transparent)';
+      infoDiv.innerHTML=`✅ <b>${sourceQueue.length} fichiers prêts</b> — tous les en-têtes correspondent à la cible. La consolidation directe est possible.`;
+    }
+    pairs.appendChild(infoDiv);
+  }
+
   document.getElementById('consolStatsBar').style.display='flex';
   document.getElementById('btnConsolRun').style.display='block';
   document.getElementById('btnConsolPreview').style.display='block';
+  document.getElementById('btnConsolSaveGroup').style.display='block';
   updateConsolStats();
 }
 function escH(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1683,11 +1943,18 @@ function escH(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 // ── Get mapping ──────────────────────────────────────────
 function getMapping(){
   const pairs=document.getElementById('consolMappingPairs');
-  const srcHeaders=JSON.parse(pairs.dataset.srcHeaders||'[]');
-  return srcHeaders.map((srcCol,i)=>{
-    const sel=document.getElementById('cmap_'+i);
-    return {src:srcCol, tgt:sel?sel.value:''};
-  }).filter(m=>m.tgt);
+  const mode=pairs.dataset.mode||'direct';
+  if(mode==='mapping'){
+    // 1 source : mapping explicite
+    const srcHeaders=JSON.parse(pairs.dataset.srcHeaders||'[]');
+    return srcHeaders.map((srcCol,i)=>{
+      const sel=document.getElementById('cmap_'+i);
+      return {src:srcCol, tgt:sel?sel.value:''};
+    }).filter(m=>m.tgt);
+  } else {
+    // N sources : correspondance directe par nom de colonne
+    return consolHeaders.filter(h=>!h.startsWith('__')).map(h=>({src:h,tgt:h}));
+  }
 }
 
 // ── Stats ────────────────────────────────────────────────
@@ -1707,8 +1974,10 @@ function updateConsolStats(){
 async function runConsol(){
   if(!consolTarget){showAlert('Chargez la feuille cible.');return;}
   if(!sourceQueue.length){showAlert('Ajoutez au moins un fichier source.');return;}
+  const pairs=document.getElementById('consolMappingPairs');
+  const mode=pairs?.dataset?.mode||'direct';
   const mapping=getMapping();
-  if(!mapping.length){showAlert('Mappez au moins une colonne.');return;}
+  if(mode==='mapping' && !mapping.length){showAlert('Mappez au moins une colonne.');return;}
 
   // Ensure __source column exists
   if(!consolHeaders.includes('__source')){
