@@ -219,6 +219,7 @@ textarea{resize:vertical;min-height:56px}
       <button class="nav-tab active" id="navCompar" onclick="switchModule('compar')">⚖ Comparaison</button>
       <button class="nav-tab" id="navConsol" onclick="switchModule('consol')">📥 Consolidation</button>
       <button class="nav-tab" id="navEclat" onclick="switchModule('eclat')">✂ Éclatement</button>
+      <button class="nav-tab" id="navFusion" onclick="switchModule('fusion')">🔀 Fusion</button>
     </nav>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn-export" id="btnExport" style="display:none" onclick="exportExcel()">↓ Exporter rapport</button>
@@ -358,6 +359,46 @@ textarea{resize:vertical;min-height:56px}
 </div><!-- end moduleConsol -->
 
 <!-- ══ MODULE COMPARAISON ══ -->
+<!-- ══ MODULE FUSION ══ -->
+<div id="moduleFusion" style="display:none">
+  <div class="card fade">
+    <div class="card-header">
+      <h2>Fusion de feuilles</h2>
+      <p>Uploadez plusieurs fichiers Excel et sélectionnez les feuilles à empiler dans un seul fichier consolidé</p>
+    </div>
+
+    <div style="padding:24px 28px 0">
+      <!-- Upload zone -->
+      <label class="btn-upload" style="background:var(--teal);display:inline-flex;gap:8px;align-items:center">
+        ➕ Ajouter des fichiers
+        <input type="file" accept=".xlsx,.xls" multiple style="display:none" onchange="fusionAddFiles(this.files)">
+      </label>
+      <button class="btn-ghost" style="margin-left:10px;font-size:12px" onclick="fusionClearAll()">🗑 Tout effacer</button>
+    </div>
+
+    <!-- File list -->
+    <div id="fusionFileList" style="padding:16px 28px;display:flex;flex-direction:column;gap:12px"></div>
+
+    <!-- Stats + options -->
+    <div id="fusionStatsBar" style="display:none;padding:12px 28px;background:var(--paper);border-top:1px solid var(--border);display:none;gap:24px;align-items:center">
+      <div style="font-size:13px">
+        <span id="fusionStatFiles" style="font-weight:700;color:var(--teal)">0</span>
+        <span style="color:var(--ink-muted)"> fichier(s)</span>
+        &nbsp;·&nbsp;
+        <span id="fusionStatSheets" style="font-weight:700;color:var(--gold)">0</span>
+        <span style="color:var(--ink-muted)"> feuille(s) sélectionnée(s)</span>
+        &nbsp;·&nbsp;
+        <span id="fusionStatRows" style="font-weight:700;color:var(--green)">0</span>
+        <span style="color:var(--ink-muted)"> lignes au total</span>
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <button class="btn-primary" id="btnFusionner" style="display:none" onclick="runFusion()">🔀 Fusionner</button>
+    </div>
+  </div>
+</div><!-- end moduleFusion -->
+
 <!-- ══ MODULE ÉCLATEMENT ══ -->
 <div id="moduleEclat" style="display:none">
   <div class="card fade">
@@ -365,71 +406,53 @@ textarea{resize:vertical;min-height:56px}
       <h2>Éclatement de fichier Excel</h2>
       <p>Divisez un fichier en plusieurs fichiers séparés ou plusieurs onglets selon les valeurs d'une colonne</p>
     </div>
-
     <div style="padding:24px 28px;display:flex;flex-direction:column;gap:20px">
-
-      <!-- Upload -->
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Fichier à éclater</div>
-        <div id="eclatUploadZone" style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:28px;text-align:center;cursor:pointer;transition:border-color .2s"
-          ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
-          ondragleave="this.style.borderColor='var(--border)'"
-          ondrop="event.preventDefault();this.style.borderColor='var(--border)';handleEclatFile(event.dataTransfer.files[0])">
+        <div id="eclatUploadZone" style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:28px;text-align:center;cursor:pointer"
+          ondragover="event.preventDefault()" ondrop="event.preventDefault();handleEclatFile(event.dataTransfer.files[0])">
           <div style="font-size:32px;margin-bottom:8px">📂</div>
-          <div style="font-size:14px;font-weight:600;color:var(--ink)">Glissez votre fichier ici</div>
+          <div style="font-size:14px;font-weight:600">Glissez votre fichier ici</div>
           <div style="font-size:12px;color:var(--ink-muted);margin:4px 0 12px">ou</div>
-          <label class="btn-upload" style="background:var(--teal)">
-            Choisir un fichier
+          <label class="btn-upload" style="background:var(--teal)">Choisir un fichier
             <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleEclatFile(this.files[0])">
           </label>
         </div>
         <div id="eclatFileInfo" style="display:none;margin-top:12px;padding:12px 16px;background:var(--paper);border-radius:var(--radius);border:1px solid var(--border)">
           <div style="display:flex;align-items:center;justify-content:space-between">
-            <div>
-              <div style="font-size:13px;font-weight:600" id="eclatFileName"></div>
-              <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="eclatFileStats"></div>
-            </div>
+            <div><div style="font-size:13px;font-weight:600" id="eclatFileName"></div>
+            <div style="font-size:11px;color:var(--ink-muted);margin-top:2px" id="eclatFileStats"></div></div>
             <button class="btn-ghost" style="font-size:11px;padding:4px 10px" onclick="resetEclatFile()">✕ Changer</button>
           </div>
-          <!-- Sélecteur feuille si multi-onglets -->
           <div id="eclatSheetSel" style="display:none;margin-top:10px">
             <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">Feuille à utiliser</label>
             <select id="eclatSheetPicker" style="font-size:12px" onchange="loadEclatSheet(this.value)"></select>
           </div>
         </div>
       </div>
-
-      <!-- Colonne d'éclatement -->
       <div id="eclatColSection" style="display:none">
         <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Colonne d'éclatement</div>
         <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
           <div class="col-selector" style="flex:1;min-width:200px">
             <div class="col-label">Sélectionner la colonne</div>
-            <select id="eclatColPicker" onchange="previewEclatGroups()">
-              <option value="">— choisir —</option>
-            </select>
+            <select id="eclatColPicker" onchange="previewEclatGroups()"><option value="">— choisir —</option></select>
           </div>
           <div class="col-selector" style="min-width:180px">
             <div class="col-label">Format de sortie</div>
             <select id="eclatFormat">
-              <option value="files">Fichiers séparés → téléchargés dans un ZIP</option>
+              <option value="files">Fichiers séparés (un par valeur)</option>
               <option value="sheets">Onglets dans un seul fichier</option>
             </select>
           </div>
         </div>
       </div>
-
-      <!-- Aperçu des groupes -->
       <div id="eclatPreviewSection" style="display:none">
         <div style="font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
-          Aperçu des groupes
-          <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted)" id="eclatGroupCount"></span>
+          Aperçu des groupes <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted)" id="eclatGroupCount"></span>
         </div>
         <div id="eclatGroupList" style="display:flex;flex-wrap:wrap;gap:8px;max-height:200px;overflow-y:auto;padding:4px"></div>
       </div>
-
     </div>
-
     <div class="card-footer">
       <button class="btn-primary" id="btnEclater" style="display:none" onclick="runEclatement()">✂ Éclater</button>
     </div>
@@ -603,7 +626,7 @@ textarea{resize:vertical;min-height:56px}
   <div id="page3" class="card fade" style="display:none">
     <div class="card-header">
       <h2>Paramètres d'analyse</h2>
-      <p>Vérifiez la configuration avant de lancer l'analyse (listes C, D et E — F, G, H suspendues)</p>
+      <p>Vérifiez la configuration avant de lancer l'analyse (listes C et D uniquement — E, F, G, H suspendues)</p>
     </div>
     <div class="settings-block">
       <div class="logic-box">
@@ -613,6 +636,10 @@ textarea{resize:vertical;min-height:56px}
     </div>
     <div class="card-footer">
       <button class="btn-ghost" onclick="goStep(2)">← Retour</button>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--ink-soft)">
+        <input type="checkbox" id="chkListeE" checked style="accent-color:var(--green)">
+        Inclure liste E <small style="color:var(--ink-muted)">(B\A — peut être très longue sur grands fichiers)</small>
+      </label>
       <button class="btn-primary" onclick="runAnalysis()">⚡ Lancer l'analyse</button>
 
     </div>
@@ -658,7 +685,7 @@ const TABS = [
   {id:'E', label:'E', desc:'B \\ A', color:'var(--green)',
    info:'⏸ Personnes dans la liste initiale (B) sans réclamation dans A — droits potentiels non réclamés.'},
 ];
-// F, G, H suspendues (non calculées)
+// Listes E, F, G, H suspendues (non calculées) — réactivables en restaurant le bloc précédent
 
 const LOGIC_ITEMS = [
   {id:'A',color:'var(--teal)',title:'Feuille A',desc:'Données complètes fichier A'},
@@ -667,7 +694,7 @@ const LOGIC_ITEMS = [
   {id:'D',color:'var(--red)',title:'D = A \\ B',desc:'Réclamants absents de B'},
   {id:'E',color:'var(--green)',title:'E = B \\ A',desc:'Dans B sans réclamation dans A'},
 ];
-// F, G, H suspendues (non calculées)
+// E, F, G, H suspendues (non calculées)
 
 // ════════════════════════════════════════════════════════
 // UTILS — Jaro-Winkler
@@ -785,37 +812,26 @@ function handleDrop(e,which){
 }
 function loadFile(file,which){
   if(!file) return;
-  // Afficher un indicateur de chargement dès le début
-  document.getElementById('prompt'+which).style.display='none';
-  const successEl = document.getElementById('success'+which);
-  successEl.style.display='block';
-  document.getElementById('name'+which).textContent='⏳ Chargement de '+file.name+'…';
-  document.getElementById('size'+which).textContent='Lecture en cours, veuillez patienter…';
-
   const reader=new FileReader();
   reader.onload=ev=>{
     try{
-      document.getElementById('size'+which).textContent='Analyse du fichier Excel…';
-      // Laisser le DOM se mettre à jour avant de lancer le parsing lourd
-      setTimeout(()=>{
-        try{
-          const wb=XLSX.read(ev.target.result,{type:'array'});
-          const ws=wb.Sheets[wb.SheetNames[0]];
-          const json=XLSX.utils.sheet_to_json(ws,{defval:''});
-          if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
-          if(which==='A'){
-            dataA=json.map((r,i)=>({...r,'__numA':'A'+(i+1),'__idxA':i}));
-            headersA=Object.keys(json[0]);
-          }else{
-            dataB=json.map((r,i)=>({...r,'__numB':'B'+(i+1),'__idxB':i}));
-            headersB=Object.keys(json[0]);
-          }
-          document.getElementById('name'+which).textContent=file.name;
-          document.getElementById('size'+which).textContent=(file.size/1024).toFixed(1)+' Ko — '+json.length+' lignes';
-          document.getElementById('zone'+which).classList.add('has-file');
-          checkStep1();
-        }catch(err){showAlert('Erreur lecture fichier '+which+': '+err);}
-      }, 50);
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!json.length){showAlert('Le fichier '+which+' est vide.');return;}
+      if(which==='A'){
+        dataA=json.map((r,i)=>({...r,'__numA':'A'+(i+1),'__idxA':i}));
+        headersA=Object.keys(json[0]);
+      }else{
+        dataB=json.map((r,i)=>({...r,'__numB':'B'+(i+1),'__idxB':i}));
+        headersB=Object.keys(json[0]);
+      }
+      document.getElementById('prompt'+which).style.display='none';
+      document.getElementById('success'+which).style.display='block';
+      document.getElementById('name'+which).textContent=file.name;
+      document.getElementById('size'+which).textContent=(file.size/1024).toFixed(1)+' Ko — '+json.length+' lignes';
+      document.getElementById('zone'+which).classList.add('has-file');
+      checkStep1();
     }catch(err){showAlert('Erreur lecture fichier '+which+': '+err);}
   };
   reader.readAsArrayBuffer(file);
@@ -975,7 +991,6 @@ async function applyDecisionRules(listC, cA, cB){
     if(!groupsByNumB[numB]) groupsByNumB[numB]=[];
     groupsByNumB[numB].push(i);
   });
-  await sleep(8);
 
   // Tolérance pour "montants se rapprochent" — cas à 1 seul critère (CIN/Tél/Nom)
   const montantsProches = (mA, mB, tol) => {
@@ -992,10 +1007,7 @@ async function applyDecisionRules(listC, cA, cB){
     return HORS_PERIMETRE.some(mot => v.includes(mot));
   };
 
-  const CHUNK_DR=500;
-  for(let _ci=0;_ci<listC.length;_ci+=CHUNK_DR){
-    const _end=Math.min(_ci+CHUNK_DR,listC.length);
-    for(let _i=_ci;_i<_end;_i++){ const item=listC[_i]; const i=_i;
+  listC.forEach((item,i)=>{
     const rowA=item.rowA, rowB=item.rowB;
     const paiementVal = String(rowB[cB.paiement]||'').trim().toUpperCase();
     const criteres = item.sim?.matchedOn||[];
@@ -1124,9 +1136,7 @@ async function applyDecisionRules(listC, cA, cB){
       item.explication = `Doublon sur N° B — une autre ligne a été retenue pour ce même N° B (montants [A] indisponibles)`;
       item.decision='Rejet';
     }
-    } // end inner for _i
-    await sleep(8);
-  } // end CHUNK_DR
+  });
 
   // ── Post-traitement : si un N° B a déjà une ligne AP/AP*, les lignes VMR ou
   //    AV-ResPEV du même groupe (issues du cas "1 seul critère") sont reclassées en Rejet ──
@@ -1236,104 +1246,45 @@ self.onmessage = function(e){
     const rB=dataB[ib]; let indexed=false;
     if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
     if(cB.tel){ const k=normPhone(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
-    // Nom non indexé par trigrammes (trop fréquents en malgache → explosion des candidats)
-    // Le nom est scoré via Jaro-Winkler sur les candidats CIN/Tél uniquement
+    if(cB.nom){ const tris=trigrams(normKey(rB[cB.nom])); if(tris.length){ tris.forEach(t=>{ if(!idxTri.has(t)) idxTri.set(t,new Set()); idxTri.get(t).add(ib); }); indexed=true; } }
     if(!indexed) noKeyB.add(ib);
     if(ib%5000===0) self.postMessage({type:'progress',phase:'index',done:ib,total:dataB.length});
   }
   self.postMessage({type:'progress',phase:'index',done:dataB.length,total:dataB.length});
 
-  // ── Comparaison A vs candidats B — envoi par batches ──
-  const matchedBIdx=new Set();
-  const BATCH=2000; // envoyer les résultats toutes les 2000 lignes
-  let batchC=[], batchD=[];
-
+  // ── Comparaison A vs candidats B ───────────────────
+  const listC=[], listD=[], matchedBIdx=new Set();
   for(let ia=0;ia<dataA.length;ia++){
     const rA=dataA[ia];
     const candidates=new Set(noKeyB);
     if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
     if(cA.tel&&cB.tel){ const k=normPhone(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-    // Nom : Jaro-Winkler sur candidats CIN/Tél uniquement
+    if(cA.nom&&cB.nom){
+      const tris=trigrams(normKey(rA[cA.nom]));
+      const freq=new Map();
+      tris.forEach(t=>{ if(idxTri.has(t)) idxTri.get(t).forEach(ib=>freq.set(ib,(freq.get(ib)||0)+1)); });
+      freq.forEach((cnt,ib)=>{ if(cnt>=2) candidates.add(ib); });
+    }
     let bestScore=0, bestIdxB=-1, bestSim=null;
     for(const ib of candidates){
       const sim=similarity(rA,dataB[ib],cA,cB);
       if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
     }
     if(bestScore>=EXACT&&bestIdxB>=0){
-      // Ne garder que les infos légères — pas rowA/rowB complets (trop lourd à transférer)
-      batchC.push({idxA:ia,idxB:bestIdxB,sim:{score:bestSim.score,matchedOn:bestSim.matchedOn,mntA:bestSim.mntA,mntB:bestSim.mntB},explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
+      listC.push({rowA:rA,rowB:dataB[bestIdxB],idxA:ia,idxB:bestIdxB,sim:bestSim,explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
       matchedBIdx.add(bestIdxB);
     } else {
-      batchD.push({idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
+      listD.push({row:rA,idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
     }
-    // Envoyer batch et libérer la mémoire Worker
-    if((ia+1)%BATCH===0 || ia===dataA.length-1){
-      self.postMessage({type:'batch',batchC,batchD,done:ia+1,total:dataA.length});
-      batchC=[]; batchD=[];
-    }
+    if(ia%500===0) self.postMessage({type:'progress',phase:'compare',done:ia,total:dataA.length});
   }
-  self.postMessage({type:'done', matchedBIdxArr:[...matchedBIdx]});
+  self.postMessage({type:'done', listC, listD, matchedBIdxArr:[...matchedBIdx]});
 };
 `;
 
 function createAnalysisWorker(){
   const blob = new Blob([WORKER_SRC], {type:'application/javascript'});
   return new Worker(URL.createObjectURL(blob));
-}
-
-// Fallback : calcul sur le thread principal (file:// ou Worker bloqué)
-// Même logique que le Worker, avec await sleep() pour ne pas geler l'UI
-async function runAnalysisFallback(dataA, dataB, cA, cB){
-  const normKey = v => String(v??'').trim().toLowerCase();
-  const normPhone2 = v => String(v??'').replace(/\D/g,'').slice(-9);
-  const trigrams2 = s => {
-    const n=s.replace(/\s+/g,'').toLowerCase();
-    if(n.length<3) return n.length?[n]:[];
-    const t=new Set();
-    for(let i=0;i<=n.length-3;i++) t.add(n.slice(i,i+3));
-    return [...t];
-  };
-  const EXACT=95;
-  const idxCIN=new Map(), idxTel=new Map(), idxTri=new Map(), noKeyB=new Set();
-
-  // Indexation B
-  for(let ib=0;ib<dataB.length;ib++){
-    const rB=dataB[ib]; let indexed=false;
-    if(cB.cin){ const k=normKey(rB[cB.cin]); if(k){ if(!idxCIN.has(k)) idxCIN.set(k,new Set()); idxCIN.get(k).add(ib); indexed=true; } }
-    if(cB.tel){ const k=normPhone2(rB[cB.tel]); if(k){ if(!idxTel.has(k)) idxTel.set(k,new Set()); idxTel.get(k).add(ib); indexed=true; } }
-    if(!indexed) noKeyB.add(ib);
-    if(ib%2000===0 && ib>0){
-      setProgress(2+Math.round(ib/dataB.length*8),'Index sur B…',`${ib} / ${dataB.length} lignes`);
-      await sleep(15);
-    }
-  }
-
-  // Comparaison A — ne stocker que les indices (léger en mémoire)
-  const listC=[], listD=[];
-  const CHUNK=20;
-  for(let i=0;i<dataA.length;i+=CHUNK){
-    const end=Math.min(i+CHUNK,dataA.length);
-    for(let ia=i;ia<end;ia++){
-      const rA=dataA[ia];
-      const candidates=new Set(noKeyB);
-      if(cA.cin&&cB.cin){ const k=normKey(rA[cA.cin]); if(k&&idxCIN.has(k)) idxCIN.get(k).forEach(ib=>candidates.add(ib)); }
-      if(cA.tel&&cB.tel){ const k=normPhone2(rA[cA.tel]); if(k&&idxTel.has(k)) idxTel.get(k).forEach(ib=>candidates.add(ib)); }
-      let bestScore=0, bestIdxB=-1, bestSim=null;
-      for(const ib of candidates){
-        const sim=similarity(rA,dataB[ib],cA,cB);
-        if(sim.score>bestScore){bestScore=sim.score;bestIdxB=ib;bestSim=sim;}
-      }
-      if(bestScore>=EXACT&&bestIdxB>=0){
-        // Stocker uniquement indices + sim (pas rowA/rowB complets → économie mémoire)
-        listC.push({idxA:ia,idxB:bestIdxB,sim:{score:bestSim.score,matchedOn:bestSim.matchedOn,mntA:bestSim.mntA,mntB:bestSim.mntB},explication:"L'acteur figure dans la liste initiale",decision:'Veuillez faire une dernière vérification'});
-      } else {
-        listD.push({idxA:ia,explication:'Acteur non trouvé dans la liste initiale',decision:'Mener une analyse plus souple sur la recherche dans la liste initiale'});
-      }
-    }
-    setProgress(10+Math.round(end/dataA.length*80),'Comparaison A ↔ B…',`${end} / ${dataA.length} entrées traitées`);
-    await sleep(15);
-  }
-  return {listC, listD, matchedBIdxArr:listC.map(item=>item.idxB)};
 }
 
 async function runAnalysis(){
@@ -1343,98 +1294,62 @@ async function runAnalysis(){
   const cB={nom:document.getElementById('bnom').value,cin:document.getElementById('bcin').value,mnt:document.getElementById('bmnt').value,tel:document.getElementById('btel').value,reg:document.getElementById('breg').value,dist:document.getElementById('bdist').value,paiement:document.getElementById('bpaiement').value,extra:extraVars.B};
 
   showProgress(true);
-  setProgress(0,'Optimisation mémoire…','Réduction des données pour analyse');
-  await sleep(20);
-
-  // Colonnes utiles pour comparaison (slim arrays → économie mémoire ~70%)
-  const colsNeededA = new Set([cA.nom,cA.cin,cA.mnt,cA.tel,cA.reg,cA.dist,cA.entite,
-    ...(cA.extra||[]).map(e=>e.col),'__numA'].filter(Boolean));
-  const colsNeededB = new Set([cB.nom,cB.cin,cB.mnt,cB.tel,cB.reg,cB.dist,cB.paiement,
-    ...(cB.extra||[]).map(e=>e.col),'__numB'].filter(Boolean));
-
-  // Créer des versions allégées pour l'analyse (garde les originaux pour l'export)
-  const dataAslim = dataA.map(r=>{ const o={}; colsNeededA.forEach(k=>{ if(k in r) o[k]=r[k]; }); return o; });
-  const dataBslim = dataB.map(r=>{ const o={}; colsNeededB.forEach(k=>{ if(k in r) o[k]=r[k]; }); return o; });
   setProgress(0,'Démarrage de l\'analyse…','');
   await sleep(50);
 
-  // ── Lancer le Worker si possible, sinon fallback thread principal ──
-  setProgress(2,'Lancement de l\'analyse…','');
+  // ── Lancer le Worker (tourne même en arrière-plan) ──
+  setProgress(2,'Lancement de l\'analyse en arrière-plan…','Le traitement continue même si vous changez d\'onglet');
   await sleep(30);
 
-  // Détection Worker disponible (bloqué sur file:// dans certains navigateurs)
-  const workerAvailable = typeof Worker !== 'undefined' && (
-    location.protocol !== 'file:' ||
-    (() => { try { new Worker(URL.createObjectURL(new Blob([''],{type:'application/javascript'}))); return true; } catch(e){ return false; } })()
-  );
-
-  let listC, listD;
-
-  if(workerAvailable){
-    // ── Mode Worker : tourne même en arrière-plan ──────
-    setProgress(2,'Analyse en arrière-plan…','Le traitement continue même si vous changez d\'onglet');
-    const result = await new Promise((resolve, reject)=>{
-      const worker = createAnalysisWorker();
-      const accumC=[], accumD=[];
-      worker.onmessage = e => {
-        const msg = e.data;
-        if(msg.type==='progress'){
-          if(msg.phase==='index'){
-            const pct=2+Math.round(msg.done/msg.total*8);
-            setProgress(pct,'Index sur B…',`${msg.done} / ${msg.total} lignes indexées`);
-          }
-        } else if(msg.type==='batch'){
-          accumC.push(...msg.batchC);
-          accumD.push(...msg.batchD);
+  const {listC, listD, matchedBIdxArr} = await new Promise((resolve, reject)=>{
+    const worker = createAnalysisWorker();
+    worker.onmessage = e => {
+      const msg = e.data;
+      if(msg.type==='progress'){
+        if(msg.phase==='index'){
+          const pct=2+Math.round(msg.done/msg.total*8);
+          setProgress(pct,'Index sur B…',`${msg.done} / ${msg.total} lignes indexées`);
+        } else {
           const pct=10+Math.round(msg.done/msg.total*80);
           setProgress(pct,'Comparaison A ↔ B…',`${msg.done} / ${msg.total} entrées traitées`);
-        } else if(msg.type==='done'){
-          worker.terminate();
-          resolve({listC:accumC, listD:accumD, matchedBIdxArr:msg.matchedBIdxArr});
         }
-      };
-      worker.onerror = err => {
+      } else if(msg.type==='done'){
         worker.terminate();
-        reject(err);
-      };
-      worker.postMessage({dataA:dataAslim, dataB:dataBslim, cA, cB});
-    }).catch(async ()=>{
-      // Worker a échoué → fallback automatique
-      return await runAnalysisFallback(dataA, dataB, cA, cB);
-    });
-    listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
-  } else {
-    // ── Mode fallback : thread principal avec yields ───
-    const result = await runAnalysisFallback(dataAslim, dataBslim, cA, cB);
-    listC = result.listC; listD = result.listD; result._matchedBIdxArr = result.matchedBIdxArr||[];
-  }
+        resolve({listC:msg.listC, listD:msg.listD, matchedBIdxArr:msg.matchedBIdxArr||[]});
+      }
+    };
+    worker.onerror = err => { worker.terminate(); reject(err); };
+    worker.postMessage({dataA, dataB, cA, cB});
+  });
 
-  // Réattacher les vrais objets rowA/rowB (le Worker transfère des copies JSON)
-  setProgress(90,'Reconstruction des données…',`${listC.length} correspondances trouvées`);
+  // Réattacher les vrais objets rowA/rowB
+  setProgress(90,'Reconstruction des données…',`${listC.length} correspondances`);
   await sleep(20);
   listC.forEach(item=>{ item.rowA=dataA[item.idxA]; item.rowB=dataB[item.idxB]; });
   listD.forEach(item=>{ item.row=dataA[item.idxA]; });
-  // Reconstituer le Set des indices B matchés (pour liste E)
-  const matchedBIdxSet = new Set(result._matchedBIdxArr||listC.map(item=>item.idxB));
 
-  // Appliquer la règle de décision automatique sur C (si colonne Paiement mappée)
+  // Appliquer les règles de décision (par chunks pour ne pas bloquer)
   setProgress(91,'Application des règles de décision…','');
   await sleep(20);
   await applyDecisionRules(listC, cA, cB);
 
-  // E : lignes de B sans correspondance dans C — construit par chunks pour ne pas bloquer
-  setProgress(92,'Construction de la liste E…','');
-  await sleep(10);
+  // E : optionnelle via case à cocher — chunked pour éviter le blocage
+  const inclureE = document.getElementById('chkListeE')?.checked !== false;
+  const matchedBIdxSet = new Set(matchedBIdxArr);
   const listE=[];
-  const CHUNKE=5000;
-  for(let i=0;i<dataB.length;i+=CHUNKE){
-    const end=Math.min(i+CHUNKE,dataB.length);
-    for(let ib=i;ib<end;ib++){
-      if(!matchedBIdxSet.has(ib))
-        listE.push({row:dataB[ib],idxB:ib,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'});
+  if(inclureE){
+    setProgress(92,'Construction de la liste E…','');
+    await sleep(10);
+    const CHUNKE=5000;
+    for(let i=0;i<dataB.length;i+=CHUNKE){
+      const end=Math.min(i+CHUNKE,dataB.length);
+      for(let ib=i;ib<end;ib++){
+        if(!matchedBIdxSet.has(ib))
+          listE.push({row:dataB[ib],idxB:ib,explication:'Acteur non réclamant',decision:'Vérifier si le paiement est déjà effectué'});
+      }
+      setProgress(92+Math.round((end/dataB.length)*3),'Construction de la liste E…',`${end} / ${dataB.length} lignes traitées`);
+      await sleep(8);
     }
-    setProgress(92+Math.round((end/dataB.length)*3),'Construction de la liste E…',`${end} / ${dataB.length} lignes traitées`);
-    await sleep(8);
   }
   const listF=[], listG=[], listH=[];
 
@@ -1729,9 +1644,9 @@ async function exportExcel(){
   }
 
   addSheet('D — Réclamants absents de B',['N° A',...distHdA,cA.nom,cA.cin,cA.mnt,cA.tel,...exHdAsingle,'Explication','Décision du comité'],results.listD.map(i=>[regNumA(i.row),...distValA(i.row),i.row[cA.nom]??'',i.row[cA.cin]??'',i.row[cA.mnt]??'',i.row[cA.tel]??'',...exValA(i.row),i.explication,i.decision]));
-  // Feuille E — Dus sans réclamation
+  // Feuille E
   addSheet('E — Dus sans réclamation',['N° B',...distHdB,cB.nom,cB.cin,cB.mnt,cB.tel,...exHdBsingle,'Explication','Décision du comité'],results.listE.map(i=>[regNumB(i.row),...distValB(i.row),i.row[cB.nom]??'',i.row[cB.cin]??'',i.row[cB.mnt]??'',i.row[cB.tel]??'',...exValB(i.row),i.explication,i.decision]));
-  // Feuilles F, G, H suspendues
+  // F, G, H suspendues
 
   // Résumé
   const wsSummary=wb.addWorksheet('Résumé');
@@ -1762,9 +1677,11 @@ function switchModule(mod){
   document.getElementById('moduleCompar').style.display = mod==='compar'?'block':'none';
   document.getElementById('moduleConsol').style.display = mod==='consol'?'block':'none';
   document.getElementById('moduleEclat').style.display  = mod==='eclat'?'block':'none';
+  document.getElementById('moduleFusion').style.display  = mod==='fusion'?'block':'none';
   document.getElementById('navCompar').classList.toggle('active', mod==='compar');
   document.getElementById('navConsol').classList.toggle('active', mod==='consol');
   document.getElementById('navEclat').classList.toggle('active',  mod==='eclat');
+  document.getElementById('navFusion').classList.toggle('active',  mod==='fusion');
   document.getElementById('btnExport').style.display      = (mod==='compar'&&results)?'block':'none';
   document.getElementById('btnExportConsol').style.display= (mod==='consol'&&consolData.length)?'block':'none';
 }
@@ -2318,6 +2235,204 @@ async function exportConsol(){
 // ALERTS
 // ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════
+// MODULE FUSION — plusieurs fichiers × plusieurs feuilles
+// ════════════════════════════════════════════════════════
+let fusionFiles = []; // [{file, wb, sheets:[{name,rows,headers,selected}]}]
+
+async function fusionAddFiles(files){
+  if(!files||!files.length) return;
+  for(const file of Array.from(files)){
+    try{
+      const buf=await file.arrayBuffer();
+      // Lire le workbook complet (noms + feuilles pour compter les lignes)
+      const wb=XLSX.read(buf,{type:'array'});
+      const sheets=wb.SheetNames.map(name=>{
+        const ws=wb.Sheets[name];
+        const ref=ws&&ws['!ref'];
+        const rowCount=ref?Math.max(0,XLSX.utils.decode_range(ref).e.r):0;
+        const isC=name.startsWith('C —')||name==='C'||(name.startsWith('C ')&&!name.startsWith('C —'));
+        return {name, rows:rowCount, selected:true}; // toutes sélectionnées par défaut
+      });
+      fusionFiles.push({file, sheets, buf});
+    }catch(e){showAlert('Erreur lecture '+file.name+': '+e.message);}
+  }
+  renderFusionList();
+}
+
+function renderFusionList(){
+  const list=document.getElementById('fusionFileList');
+  if(!fusionFiles.length){
+    list.innerHTML='<div style="color:var(--ink-muted);font-size:13px;padding:8px 0">Aucun fichier chargé — cliquez sur "Ajouter des fichiers"</div>';
+    document.getElementById('fusionStatsBar').style.display='none';
+    document.getElementById('btnFusionner').style.display='none';
+    return;
+  }
+  list.innerHTML=fusionFiles.map((item,fi)=>`
+    <div style="border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+      <div style="background:var(--paper);padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-size:13px;font-weight:600">${escH(item.file.name)}</span>
+          <span style="font-size:11px;color:var(--ink-muted);margin-left:8px">${item.sheets.length} feuille(s)</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-ghost" style="font-size:11px;padding:3px 10px" onclick="fusionToggleAll(${fi},true)">Tout sélectionner</button>
+          <button class="btn-ghost" style="font-size:11px;padding:3px 10px" onclick="fusionToggleAll(${fi},false)">Tout désélectionner</button>
+          <button class="btn-ghost" style="font-size:11px;padding:3px 10px;color:var(--red)" onclick="fusionRemoveFile(${fi})">✕</button>
+        </div>
+      </div>
+      <div style="padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px">
+        ${item.sheets.map((sh,si)=>{ const isC=sh.name.startsWith('C —')||sh.name==='C'||(sh.name.startsWith('C ')&&!sh.name.startsWith('C —')); return `
+          <label style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;cursor:pointer;font-size:12px;
+            background:${sh.selected?(isC?'color-mix(in srgb,var(--teal) 18%,white)':'color-mix(in srgb,var(--gold) 10%,white)'):'var(--paper)'};
+            border:1px solid ${sh.selected?(isC?'color-mix(in srgb,var(--teal) 40%,transparent)':'color-mix(in srgb,var(--gold) 30%,transparent)'):'var(--border)'};
+            transition:all .15s">
+            <input type="checkbox" ${sh.selected?'checked':''} style="accent-color:${isC?'var(--teal)':'var(--gold)'}"
+              onchange="fusionToggleSheet(${fi},${si},this.checked)">
+            <span style="font-weight:${sh.selected?'600':'400'}">${escH(sh.name)}</span>
+            ${isC?'<span style="font-size:10px;background:var(--teal);color:white;padding:1px 6px;border-radius:8px;margin-left:2px">C</span>':''}
+            <span style="color:var(--ink-muted)">${sh.rows} lignes</span>
+          </label>`;}).join('')}
+      </div>
+    </div>`).join('');
+
+  // Update stats
+  const selectedSheets=fusionFiles.flatMap(f=>f.sheets.filter(s=>s.selected));
+  const totalRows=selectedSheets.reduce((a,s)=>a+(typeof s.rows==='number'?s.rows:0),0);
+  document.getElementById('fusionStatFiles').textContent=fusionFiles.length;
+  document.getElementById('fusionStatSheets').textContent=selectedSheets.length;
+  document.getElementById('fusionStatRows').textContent=totalRows.toLocaleString('fr-FR');
+  document.getElementById('fusionStatsBar').style.display='flex';
+  document.getElementById('btnFusionner').style.display=selectedSheets.length>0?'block':'none';
+}
+
+function fusionToggleSheet(fi,si,checked){
+  fusionFiles[fi].sheets[si].selected=checked;
+  renderFusionList();
+}
+function fusionToggleAll(fi,val){
+  fusionFiles[fi].sheets.forEach(s=>s.selected=val);
+  renderFusionList();
+}
+function fusionRemoveFile(fi){
+  fusionFiles.splice(fi,1);
+  renderFusionList();
+}
+function fusionClearAll(){
+  fusionFiles=[];
+  renderFusionList();
+}
+
+async function runFusion(){
+  // Collecter toutes les feuilles sélectionnées de tous les fichiers
+  const allSheets=fusionFiles.flatMap(f=>
+    f.sheets.filter(s=>s.selected).map(s=>({file:f.file,buf:f.buf,sheetName:s.name,rows:s.rows}))
+  );
+  if(!allSheets.length){showAlert('Sélectionnez au moins une feuille.');return;}
+
+  showProgress(true);
+  setProgress(0,'Initialisation…',''); await sleep(20);
+  await ensureExcelJS();
+
+  // Styles pour feuille C (basés sur la décision)
+  const DARK='FF1A1A2E', WHITE='FFFFFFFF';
+  const COLORS={
+    'AP':'FFD4EDDA','AP numéro à fournir*':'FFD4EDDA','AP numéro à confirmer*':'FFD4EDDA',
+    'DP':'FFCCE5FF','Rejet':'FFF8D7DA','VMR':'FFFFF3CD','VM':'FFFFF3CD',
+    'AV-ResPEV':'FFFDE2D3','Transmettre aux concernés':'FFE2D9F3',
+    'A vérifier auprès des responsables locaux':'FFE2D9F3',
+  };
+  const fillS=argb=>({type:'pattern',pattern:'solid',fgColor:{argb}});
+  const brd=()=>({top:{style:'thin',color:{argb:'FFCCCCCC'}},bottom:{style:'thin',color:{argb:'FFCCCCCC'}},left:{style:'thin',color:{argb:'FFCCCCCC'}},right:{style:'thin',color:{argb:'FFCCCCCC'}}});
+  const HDR={fill:fillS(DARK),font:{color:{argb:WHITE},bold:true,size:10},border:brd(),alignment:{vertical:'middle'}};
+  const DEF={fill:fillS(WHITE),font:{color:{argb:DARK},size:10},border:brd(),alignment:{vertical:'middle',wrapText:true}};
+
+  const wbOut=new ExcelJS.Workbook();
+  const summaryRows=[];
+  const total=allSheets.length;
+  let processedSheets=0, totalRows=0;
+
+  // Grouper par nom de feuille pour empiler les données de même type
+  const sheetGroups=new Map();
+  allSheets.forEach(item=>{
+    if(!sheetGroups.has(item.sheetName)) sheetGroups.set(item.sheetName,[]);
+    sheetGroups.get(item.sheetName).push(item);
+  });
+
+  // Créer un onglet dans le fichier de sortie par groupe de feuilles
+  for(const [sheetName,items] of sheetGroups){
+    const isC=sheetName.startsWith('C —')||sheetName==='C'||sheetName.startsWith('C ');
+    const wsOut=wbOut.addWorksheet(sheetName.slice(0,31));
+    let headerWritten=false, decisionColIdx=-1;
+
+    for(let ii=0;ii<items.length;ii++){
+      const {file,buf}=items[ii];
+      setProgress(Math.round(processedSheets/total*80),
+        `Feuille "${sheetName}" — ${ii+1}/${items.length}`,file.name);
+      await sleep(5);
+      try{
+        const wbIn=XLSX.read(buf,{type:'array'});
+        const wsIn=wbIn.Sheets[sheetName];
+        if(!wsIn){summaryRows.push([file.name,sheetName,0,'Non trouvée']);continue;}
+        const data=XLSX.utils.sheet_to_json(wsIn,{header:1,defval:''});
+        if(!data.length) continue;
+
+        // En-tête (une seule fois par groupe)
+        if(!headerWritten){
+          decisionColIdx=data[0].findIndex(h=>String(h).toLowerCase().includes('décision'));
+          const hdrRow=wsOut.addRow(data[0]);
+          hdrRow.eachCell(cell=>Object.assign(cell,HDR));
+          wsOut.columns=data[0].map(()=>({width:22}));
+          headerWritten=true;
+        }
+
+        // Données
+        let fileRows=0;
+        for(let ri=1;ri<data.length;ri++){
+          const row=data[ri];
+          const wsRow=wsOut.addRow(row);
+          if(isC){
+            // Feuille C : styles selon décision
+            const decision=decisionColIdx>=0?String(row[decisionColIdx]||'').trim():'';
+            const fillArgb=COLORS[decision]||WHITE;
+            wsRow.eachCell(cell=>{
+              cell.border=brd(); cell.alignment=DEF.alignment;
+              cell.font={color:{argb:DARK},size:10};
+              cell.fill=fillS(fillArgb);
+            });
+          } else {
+            // Autres feuilles : style simple sans couleur
+            wsRow.eachCell(cell=>{ cell.border=brd(); cell.font={color:{argb:DARK},size:10}; cell.alignment=DEF.alignment; });
+          }
+          fileRows++; totalRows++;
+          if(ri%1000===0){ await sleep(3); }
+        }
+        summaryRows.push([file.name,sheetName,fileRows,'OK']);
+      }catch(e){summaryRows.push([file.name,sheetName,0,'Erreur: '+e.message]);}
+      processedSheets++;
+    }
+  }
+
+  // Feuille Résumé
+  setProgress(87,'Génération du résumé…',''); await sleep(10);
+  const wsSumm=wbOut.addWorksheet('Résumé');
+  [['Fichier','Feuille','Lignes','Statut'],...summaryRows,['TOTAL','',totalRows,'']].forEach(r=>{
+    const row=wsSumm.addRow(r);
+    row.eachCell(cell=>{cell.border=brd();cell.font={color:{argb:DARK},size:10};});
+  });
+
+  setProgress(90,'Écriture du fichier…',''); await sleep(10);
+  const outBuf=await wbOut.xlsx.writeBuffer();
+  setProgress(99,'Téléchargement…',''); await sleep(100);
+  const blob=new Blob([outBuf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`fusion_${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  setProgress(100,'Terminé !',''); await sleep(300); showProgress(false);
+  showAlert(`Fusion terminée — ${totalRows.toLocaleString('fr-FR')} lignes depuis ${fusionFiles.length} fichier(s).`);
+}
+// ════════════════════════════════════════════════════════
 // MODULE ÉCLATEMENT
 // ════════════════════════════════════════════════════════
 let eclatWb=null, eclatData=[], eclatHeaders=[], eclatFile=null;
@@ -2326,7 +2441,7 @@ async function handleEclatFile(file){
   if(!file) return;
   eclatFile=file;
   document.getElementById('eclatUploadZone').style.display='none';
-  document.getElementById('eclatFileName').textContent='⏳ Chargement de '+file.name+'…';
+  document.getElementById('eclatFileName').textContent='⏳ '+file.name;
   document.getElementById('eclatFileStats').textContent='Lecture en cours…';
   document.getElementById('eclatFileInfo').style.display='block';
   await sleep(30);
@@ -2344,16 +2459,14 @@ async function handleEclatFile(file){
 }
 function loadEclatSheet(sheetName){
   const ws=eclatWb.getWorksheet(sheetName);
-  if(!ws){return;}
-  const hRow=ws.getRow(1);
-  eclatHeaders=[];
+  if(!ws) return;
+  const hRow=ws.getRow(1); eclatHeaders=[];
   hRow.eachCell({includeEmpty:true},(cell,col)=>{
     eclatHeaders[col-1]=String(cell.value??'').trim()||'Colonne '+col;
   });
   eclatData=[];
   for(let r=2;r<=ws.rowCount;r++){
-    const row=ws.getRow(r);
-    if(row.cellCount===0) continue;
+    const row=ws.getRow(r); if(row.cellCount===0) continue;
     const obj={};
     eclatHeaders.forEach((h,ci)=>{
       const cell=row.getCell(ci+1);
@@ -2365,18 +2478,15 @@ function loadEclatSheet(sheetName){
     eclatData.push(obj);
   }
   document.getElementById('eclatFileName').textContent=eclatFile.name;
-  document.getElementById('eclatFileStats').textContent=
-    `${eclatData.length} lignes · ${eclatHeaders.length} colonnes · feuille "${sheetName}"`;
-  // Remplir sélecteur colonnes
-  const colPicker=document.getElementById('eclatColPicker');
-  colPicker.innerHTML='<option value="">— choisir —</option>'+
-    eclatHeaders.map(h=>`<option value="${escH(h)}">${escH(h)}</option>`).join('');
+  document.getElementById('eclatFileStats').textContent=`${eclatData.length} lignes · ${eclatHeaders.length} colonnes · feuille "${sheetName}"`;
+  const cp=document.getElementById('eclatColPicker');
+  cp.innerHTML='<option value="">— choisir —</option>'+eclatHeaders.map(h=>`<option value="${escH(h)}">${escH(h)}</option>`).join('');
   document.getElementById('eclatColSection').style.display='block';
   document.getElementById('eclatPreviewSection').style.display='none';
   document.getElementById('btnEclater').style.display='none';
 }
 function resetEclatFile(){
-  eclatWb=null; eclatData=[]; eclatHeaders=[]; eclatFile=null;
+  eclatWb=null;eclatData=[];eclatHeaders=[];eclatFile=null;
   document.getElementById('eclatUploadZone').style.display='block';
   document.getElementById('eclatFileInfo').style.display='none';
   document.getElementById('eclatColSection').style.display='none';
@@ -2385,26 +2495,14 @@ function resetEclatFile(){
 }
 function previewEclatGroups(){
   const col=document.getElementById('eclatColPicker').value;
-  if(!col){
-    document.getElementById('eclatPreviewSection').style.display='none';
-    document.getElementById('btnEclater').style.display='none';
-    return;
-  }
-  // Compter les valeurs uniques
+  if(!col){document.getElementById('eclatPreviewSection').style.display='none';document.getElementById('btnEclater').style.display='none';return;}
   const groups=new Map();
-  eclatData.forEach(row=>{
-    const val=String(row[col]??'').trim()||'(vide)';
-    groups.set(val,(groups.get(val)||0)+1);
-  });
+  eclatData.forEach(row=>{const val=String(row[col]??'').trim()||'(vide)';groups.set(val,(groups.get(val)||0)+1);});
   const sorted=[...groups.entries()].sort((a,b)=>b[1]-a[1]);
-  document.getElementById('eclatGroupCount').textContent=
-    ` — ${sorted.length} valeur(s) distincte(s)`;
-  const list=document.getElementById('eclatGroupList');
-  list.innerHTML=sorted.map(([val,cnt])=>`
+  document.getElementById('eclatGroupCount').textContent=` — ${sorted.length} valeur(s) distincte(s)`;
+  document.getElementById('eclatGroupList').innerHTML=sorted.map(([val,cnt])=>`
     <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:color-mix(in srgb,var(--teal) 8%,white);border:1px solid color-mix(in srgb,var(--teal) 20%,transparent);border-radius:20px;font-size:12px">
-      <span style="font-weight:600">${escH(val)}</span>
-      <span style="color:var(--ink-muted)">${cnt} lignes</span>
-    </div>`).join('');
+      <span style="font-weight:600">${escH(val)}</span><span style="color:var(--ink-muted)">${cnt} lignes</span></div>`).join('');
   document.getElementById('eclatPreviewSection').style.display='block';
   document.getElementById('btnEclater').style.display='block';
 }
@@ -2412,112 +2510,41 @@ async function runEclatement(){
   const col=document.getElementById('eclatColPicker').value;
   const fmt=document.getElementById('eclatFormat').value;
   if(!col||!eclatData.length){showAlert('Sélectionnez une colonne.');return;}
-
-  // Grouper les données
+  const sanitize=s=>String(s).replace(/[\/*?:\[\]]/g,'_').slice(0,31);
+  const baseName=eclatFile.name.replace(/\.[^.]+$/,'');
   const groups=new Map();
-  eclatData.forEach(row=>{
-    const val=String(row[col]??'').trim()||'(vide)';
-    if(!groups.has(val)) groups.set(val,[]);
-    groups.get(val).push(row);
-  });
-
-  showProgress(true);
-  setProgress(0,'Chargement ExcelJS…','');
-  await sleep(20);
-  await ensureExcelJS();
-
-  const DARK='FF1A1A2E',WHITE='FFFFFFFF';
-  const fillS=argb=>({type:'pattern',pattern:'solid',fgColor:{argb}});
-  const brd=()=>({top:{style:'thin',color:{argb:'FFCCCCCC'}},bottom:{style:'thin',color:{argb:'FFCCCCCC'}},left:{style:'thin',color:{argb:'FFCCCCCC'}},right:{style:'thin',color:{argb:'FFCCCCCC'}}});
-
-  const sanitize=s=>String(s).replace(/[\\/*?:\[\]]/g,'_').slice(0,31);
-  const groupArr=[...groups.entries()];
-  const total=groupArr.length;
-
+  eclatData.forEach(row=>{const val=String(row[col]??'').trim()||'(vide)';if(!groups.has(val))groups.set(val,[]);groups.get(val).push(row);});
+  const groupArr=[...groups.entries()]; const total=groupArr.length;
+  showProgress(true); setProgress(0,'Préparation…',''); await sleep(20);
   if(fmt==='sheets'){
-    // ── Mode onglets : un seul fichier avec N onglets ──
-    const wb=new ExcelJS.Workbook();
+    const wb=XLSX.utils.book_new();
     for(let gi=0;gi<total;gi++){
       const [val,rows]=groupArr[gi];
-      setProgress(Math.round(gi/total*90),`Onglet : ${val}`,`${gi+1} / ${total}`);
-      await sleep(5);
-      const ws=wb.addWorksheet(sanitize(val));
-      ws.columns=eclatHeaders.map(h=>({header:h,width:22}));
-      ws.getRow(1).eachCell(cell=>{
-        cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};cell.border=brd();
-      });
-      rows.forEach(row=>{
-        const wsRow=ws.addRow(eclatHeaders.map(h=>row[h]??''));
-        wsRow.eachCell(cell=>{
-          cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};cell.border=brd();
-        });
-      });
+      setProgress(Math.round(gi/total*85),`Onglet : ${val}`,`${gi+1} / ${total}`); await sleep(5);
+      const wsData=[eclatHeaders,...rows.map(r=>eclatHeaders.map(h=>r[h]??''))];
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(wsData),sanitize(val));
     }
-    setProgress(92,'Génération du fichier…','');
-    await sleep(20);
-    const buf=await wb.xlsx.writeBuffer();
-    setProgress(100,'Téléchargement…','');
-    await sleep(100);
-    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    setProgress(88,'Génération…',''); await sleep(10);
+    const blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    const baseName=eclatFile.name.replace(/\.[^.]+$/,'');
-    a.href=url; a.download=`${baseName}_eclate_${col}.xlsx`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-
+    const a=document.createElement('a'); a.href=url; a.download=`${baseName}_eclate_${sanitize(col)}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),2000);
   } else {
-    // ── Mode fichiers séparés : générer un ZIP contenant tous les fichiers ──
-    setProgress(2,'Chargement JSZip…','');
-    await sleep(10);
-    if(typeof JSZip==='undefined'){
-      await new Promise((res,rej)=>{
-        const s=document.createElement('script');
-        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-        s.onload=res; s.onerror=()=>rej(new Error('Impossible de charger JSZip'));
-        document.head.appendChild(s);
-      });
-    }
-    const zip=new JSZip();
-    const baseName=eclatFile.name.replace(/\.[^.]+$/,'');
-
     for(let gi=0;gi<total;gi++){
       const [val,rows]=groupArr[gi];
-      setProgress(5+Math.round(gi/total*85),`Génération : ${val}`,`${gi+1} / ${total}`);
-      await sleep(5);
-      const wb=new ExcelJS.Workbook();
-      const ws=wb.addWorksheet(sanitize(val));
-      ws.columns=eclatHeaders.map(h=>({header:h,width:22}));
-      ws.getRow(1).eachCell(cell=>{
-        cell.fill=fillS(DARK);cell.font={color:{argb:WHITE},bold:true,size:10};cell.border=brd();
-      });
-      rows.forEach(row=>{
-        const wsRow=ws.addRow(eclatHeaders.map(h=>row[h]??''));
-        wsRow.eachCell(cell=>{
-          cell.fill=fillS(WHITE);cell.font={color:{argb:DARK},size:10};cell.border=brd();
-        });
-      });
-      const buf=await wb.xlsx.writeBuffer();
-      zip.file(`${baseName}_${sanitize(val)}.xlsx`, buf);
+      setProgress(Math.round(gi/total*95),`Fichier : ${val}`,`${gi+1} / ${total}`); await sleep(8);
+      const wb=XLSX.utils.book_new();
+      const wsData=[eclatHeaders,...rows.map(r=>eclatHeaders.map(h=>r[h]??''))];
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(wsData),sanitize(val));
+      const blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=`${baseName}_${sanitize(val)}.xlsx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),1000);
+      await sleep(500);
     }
-
-    setProgress(92,'Compression du ZIP…','');
-    await sleep(10);
-    const zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
-      (meta)=>{ setProgress(92+Math.round(meta.percent/100*6),'Compression…',`${Math.round(meta.percent)}%`); }
-    );
-    setProgress(99,'Téléchargement…','');
-    await sleep(100);
-    const url=URL.createObjectURL(zipBlob);
-    const a=document.createElement('a');
-    a.href=url; a.download=`${baseName}_eclate_${sanitize(col)}.zip`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
-    setProgress(100,'Terminé !','');
-    await sleep(200);
   }
-  showProgress(false);
-  showAlert(`Éclatement terminé — ${total} groupe(s) dans le fichier ZIP.`);
+  setProgress(100,'Terminé !',''); await sleep(300); showProgress(false);
+  showAlert(`Éclatement terminé — ${total} groupe(s) exporté(s).`);
 }
 
 function showAlert(msg){const b=document.getElementById('alertBox');b.textContent='⚠ '+msg;b.style.display='block';}
